@@ -765,12 +765,26 @@ function decryptHexMulti(hex) {
   if (!raw.length) return null;
   const nonce = raw.slice(0, 24);
   const box   = raw.slice(24);
+
+  // Forsøg alle kendte NFT-nøgler
   for (const nft of allNfts) {
     try {
       const dec = nacl.secretbox.open(box, nonce, nft.cryptoKey);
       if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
     } catch {}
   }
+
+  // Legacy: noter krypteret med walletSignKey direkte (før NFT-systemet)
+  // Disse kan KUN læses hvis wallet-nøglen er den samme — NFT-ejerskab giver ikke adgang
+  // Ved fremtidig brug bør disse re-krypteres med NFT-nøglen
+  const wsKey = secureVault.getWalletSignKey();
+  if (wsKey) {
+    try {
+      const dec = nacl.secretbox.open(box, nonce, wsKey);
+      if (dec) return { text: new TextDecoder().decode(dec), nftId: '__legacy__' };
+    } catch {}
+  }
+
   return null;
 }
 
@@ -890,10 +904,10 @@ async function deriveKey() {
 
   if (!seedBytes || seedBytes.length !== 64) seedBytes = sigBytes;
 
-  // SHA-256 af Ed25519 signature bytes — deterministisk og bagudkompatibel
-  const hash = await crypto.subtle.digest('SHA-256', seedBytes);
+  // walletSignKey bruges KUN til at kryptere/dekryptere NFT's private key
+  // Notes krypteres altid med NFT-nøglen — cryptoKey sættes af NFT-detection
   walletSignKey = new Uint8Array(hash);
-  cryptoKey = walletSignKey;
+  // cryptoKey sættes IKKE her — det sættes af detectJournalNFT via setWriteNft
 }
 
 // ── NFT detection ─────────────────────────────────────────────────
@@ -2445,9 +2459,11 @@ function renderEntries(entries) {
     const date    = new Date(e.time).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const preview = e.text.length > 180 ? e.text.slice(0,180).trimEnd()+'…' : null;
     const batch   = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
-    const nftTag  = allNfts.length > 1 && e.nftId
-      ? `<span class="batch-tag" style="color:var(--accent)">⬡ ${esc(allNfts.find(n=>n.policyId===e.nftId)?.tokenName||'')}</span>`
-      : '';
+    const nftTag  = e.nftId === '__legacy__'
+      ? `<span class="batch-tag" style="color:var(--danger);opacity:.7">legacy key</span>`
+      : allNfts.length > 1 && e.nftId
+        ? `<span class="batch-tag" style="color:var(--accent)">⬡ ${esc(allNfts.find(n=>n.policyId===e.nftId)?.tokenName||'')}</span>`
+        : '';
     return `<div class="entry-card" id="ec${i}" onclick="toggleEntry(${i})">
       <div class="entry-head">
         <div><span class="entry-time">${date}</span>${batch}${nftTag}</div>
