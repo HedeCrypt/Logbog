@@ -188,6 +188,22 @@
   .transfer-step.active{background:var(--surface2);color:var(--text)}
   .transfer-step-num{font-family:var(--mono);font-size:9px;color:var(--accent);min-width:18px;padding-top:2px;opacity:.8}
   .transfer-step-num.done{color:var(--muted)}
+  /* ── NFT selector ── */
+  .nft-selector-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150;display:none;align-items:flex-end;justify-content:center}
+  .nft-selector-overlay.open{display:flex}
+  .nft-selector-panel{background:var(--surface);border:1px solid var(--border);border-radius:14px 14px 0 0;padding:1.5rem;width:100%;max-width:480px}
+  .nft-selector-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:1.25rem;display:flex;justify-content:space-between;align-items:center}
+  .nft-sel-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:.75rem 0;border-bottom:1px solid var(--border)}
+  .nft-sel-row:last-child{border-bottom:none}
+  .nft-sel-check{display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0}
+  .nft-sel-check input[type=checkbox]{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .nft-sel-info{min-width:0}
+  .nft-sel-name{font-size:14px;color:var(--text);font-family:var(--mono)}
+  .nft-sel-policy{font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;margin-top:2px}
+  .nft-sel-write-btn{font-family:var(--mono);font-size:10px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--muted);padding:5px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .12s}
+  .nft-sel-write-btn:hover{border-color:var(--accent);color:var(--accent);background:transparent}
+  .nft-sel-write-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+
   /* ── Lock screen ── */
   .lock-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem}
   .lock-overlay.show{display:flex}
@@ -286,6 +302,7 @@
         <div class="write-toolbar">
           <button class="primary" onclick="addDraft()">Gem lokalt</button>
           <button class="ghost" onclick="clearNote()">Clear</button>
+          <span id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;opacity:.6" onclick="showNftSelector()"></span>
           <span class="char-count" id="charCount">0 chars</span>
         </div>
       </div>
@@ -409,6 +426,20 @@
   </main>
 </div>
 
+<!-- NFT SELECTOR OVERLAY -->
+<div class="nft-selector-overlay" id="nftSelectorOverlay" onclick="if(event.target===this)closeNftSelector()">
+  <div class="nft-selector-panel">
+    <div class="nft-selector-title">
+      <span>Journal keys in wallet</span>
+      <button class="settings-close" onclick="closeNftSelector()">×</button>
+    </div>
+    <div id="nftSelectorList"></div>
+    <div style="margin-top:1rem;font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;line-height:1.6">
+      Check journals to show in the log. Select which key to use for new entries.
+    </div>
+  </div>
+</div>
+
 <!-- LOCK OVERLAY -->
 <div class="lock-overlay" id="lockOverlay">
   <div class="lock-icon">⬡</div>
@@ -442,7 +473,7 @@
 
 <script>
 const METADATA_LABEL = 1337;
-const SIGN_MSG = 'cardano-journal-v1:key-derivation:do-not-sign-on-untrusted-sites';
+const SIGN_MSG = 'cardano-logbog-v1';
 
 const NETWORKS = {
   mainnet: {
@@ -635,6 +666,14 @@ let drafts = [], savedEntries = [], bfKey = '';
 let nftPolicyId = null, nftAssetName = null;
 let pendingNftUnit = null;
 
+// Multi-NFT state
+// allNfts: [{ policyId, tokenName, privKey, pubKey, cryptoKey }]
+// activeNfts: Set af policyIds der er valgt til visning
+// writeNft: policyId for den NFT der skrives med
+let allNfts = [];
+let activeNftIds = new Set();
+let writeNftId = null;
+
 // Behold disse som aliases for bagudkompatibilitet i eksisterende kode
 // Brug altid secureVault til nye adgange
 Object.defineProperty(window, 'cryptoKey', { get: () => secureVault.getCryptoKey(), set: v => secureVault.setCryptoKey(v), configurable: true });
@@ -710,20 +749,39 @@ function clearNote() {
 }
 
 // ── Kryptering ────────────────────────────────────────────────────
-function encryptText(text) {
+function encryptWithNft(text, nftId) {
+  const nft = allNfts.find(n => n.policyId === nftId) || allNfts[0];
+  if (!nft) throw new Error('No NFT available for encryption.');
   const nonce = nacl.randomBytes(24);
-  const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, cryptoKey);
+  const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, nft.cryptoKey);
   const out   = new Uint8Array(24+box.length);
-  out.set(nonce); out.set(box,24);
+  out.set(nonce); out.set(box, 24);
   return b2h(out);
 }
 
+// Forsøg at dekryptere med alle aktive NFTs — returnerer { text, nftId } eller null
+function decryptHexMulti(hex) {
+  const raw = h2b(hex);
+  if (!raw.length) return null;
+  const nonce = raw.slice(0, 24);
+  const box   = raw.slice(24);
+  for (const nft of allNfts) {
+    try {
+      const dec = nacl.secretbox.open(box, nonce, nft.cryptoKey);
+      if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
+    } catch {}
+  }
+  return null;
+}
+
+// Legacy enkelt-nøgle decrypt (bruges stadig af NFT-nøgle kryptering)
 function decryptHex(hex) {
-  try {
-    const raw = h2b(hex);
-    const dec = nacl.secretbox.open(raw.slice(24), raw.slice(0,24), cryptoKey);
-    return dec ? new TextDecoder().decode(dec) : null;
-  } catch { return null; }
+  const result = decryptHexMulti(hex);
+  return result ? result.text : null;
+}
+
+function encryptText(text) {
+  return encryptWithNft(text, writeNftId || allNfts[0]?.policyId);
 }
 
 // ── Wallet ────────────────────────────────────────────────────────
@@ -832,13 +890,9 @@ async function deriveKey() {
 
   if (!seedBytes || seedBytes.length !== 64) seedBytes = sigBytes;
 
-  // HKDF i stedet for rå SHA-256 — stærkere domæne-adskillelse
-  const baseKey = await crypto.subtle.importKey('raw', seedBytes, 'HKDF', false, ['deriveKey','deriveBits']);
-  const derived = await crypto.subtle.deriveBits(
-    { name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('cardano-journal-key-v1'), info: new Uint8Array(0) },
-    baseKey, 256
-  );
-  walletSignKey = new Uint8Array(derived);
+  // SHA-256 af Ed25519 signature bytes — deterministisk og bagudkompatibel
+  const hash = await crypto.subtle.digest('SHA-256', seedBytes);
+  walletSignKey = new Uint8Array(hash);
   cryptoKey = walletSignKey;
 }
 
@@ -850,6 +904,9 @@ const JOURNAL_ENTRY_LABEL = 1337;
 
 async function detectJournalNFT() {
   pendingNftUnit = null;
+  allNfts = [];
+  const pendingUnits = [];
+
   try {
     const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
     const allAssets = [];
@@ -860,81 +917,180 @@ async function detectJournalNFT() {
     }
 
     for (const unit of allAssets) {
-      const policyId    = unit.slice(0, 56);
+      const policyId     = unit.slice(0, 56);
       const assetNameHex = unit.slice(56);
-      const tokenName   = assetNameHex ? new TextDecoder().decode(h2b(assetNameHex)) : '';
+      const tokenName    = assetNameHex ? new TextDecoder().decode(h2b(assetNameHex)) : '';
 
       try {
-        const meta = await bfGet('assets/'+unit);
-
+        const meta    = await bfGet('assets/'+unit);
         const onchain = meta.onchain_metadata;
+        if (!onchain) continue;
 
-        // CIP-25 struktur: { "721": { "<policyId>": { "<tokenName>": { ... } } } }
-        // Blockfrost returnerer onchain_metadata som indholdet af label 721 direkte
-        // Prøv alle mulige nesting-niveauer
         let tokenData = null;
-
-        // Niveau 1: onchain[policyId][tokenName]
         if (onchain[policyId]?.[tokenName]) tokenData = onchain[policyId][tokenName];
-        // Niveau 2: onchain[tokenName]
         else if (onchain[tokenName]) tokenData = onchain[tokenName];
-        // Niveau 3: flad struktur
         else if (onchain.journalKey !== undefined) tokenData = onchain;
+        if (!tokenData?.journalKey) continue;
 
-
-
-        // encPrivKey kan være:
-        // A) Array af strings (hex chunks)
-        // B) Array af { bytes: "hex" } objekter (Blockfrost bytes encoding)
-        // C) En enkelt string
         let encPrivKeyBytes = null;
         const raw = tokenData.encPrivKey;
         if (Array.isArray(raw)) {
           const hexStr = raw.map(chunk => {
             if (typeof chunk === 'string') return chunk.replace(/^0x/i, '');
             if (chunk?.bytes) return chunk.bytes.replace(/^0x/i, '');
-            if (chunk instanceof Uint8Array) return b2h(chunk);
             return '';
           }).join('');
           encPrivKeyBytes = h2b(hexStr);
         } else if (typeof raw === 'string') {
           encPrivKeyBytes = h2b(raw.replace(/^0x/i, ''));
         }
-
         if (!encPrivKeyBytes) continue;
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
-        if (privKey) return setNftState(privKey, policyId, tokenName);
-
-        // Direkte dekryptering fejlede — NFT kan være modtaget via transfer
-        // Husk til transfer-søgning
-        if (!pendingNftUnit) pendingNftUnit = { policyId, tokenName };
-
+        if (privKey) {
+          allNfts.push(makeNftEntry(privKey, policyId, tokenName));
+        } else {
+          pendingUnits.push({ policyId, tokenName });
+        }
       } catch { continue; }
     }
 
-    // Fallback: søg efter transfer-transaktion med re-krypteret nøgle (label 1338)
-    if (pendingNftUnit) {
+    // Forsøg transfer-nøgle for NFTs der ikke kunne dekrypteres direkte
+    for (const pending of pendingUnits) {
+      pendingNftUnit = pending;
       const privKey = await findTransferKey();
-      if (privKey) return setNftState(privKey, pendingNftUnit.policyId, pendingNftUnit.tokenName);
+      if (privKey) allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
     }
+    pendingNftUnit = null;
 
-    return false;
-  } catch { return false; }
-}
+  } catch {}
 
-function setNftState(privKey, policyId, tokenName) {
-  nftPrivKey   = privKey;
-  nftPubKey    = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
-  nftPolicyId  = policyId;
-  nftAssetName = tokenName;
-  cryptoKey    = privKey.slice(0, 32);
-  document.getElementById('nftBadge').textContent = '⬡ '+tokenName;
-  document.getElementById('nftBadge').style.display = 'block';
+  if (!allNfts.length) return false;
+
+  // Gendan gemte valg
+  const savedActive = loadNftSelection();
+  if (savedActive && savedActive.length) {
+    activeNftIds = new Set(savedActive.filter(id => allNfts.some(n => n.policyId === id)));
+    writeNftId   = savedActive[0];
+  }
+  if (!activeNftIds.size) {
+    activeNftIds = new Set(allNfts.map(n => n.policyId));
+    writeNftId   = allNfts[0].policyId;
+  }
+
+  // Sæt bagudkompatibel cryptoKey til den primære NFT
+  cryptoKey = allNfts.find(n => n.policyId === writeNftId)?.cryptoKey || allNfts[0].cryptoKey;
+  nftPolicyId  = writeNftId;
+  nftAssetName = allNfts.find(n => n.policyId === writeNftId)?.tokenName || '';
+
+  updateNftBadge();
+
+  // Vis valgskærm hvis der er mere end én NFT
+  if (allNfts.length > 1) {
+    showNftSelector();
+    return true;
+  }
+
   return true;
 }
 
-// Søg efter transfer-transaktion (label 1338) til denne wallet
+function makeNftEntry(privKey, policyId, tokenName) {
+  return {
+    policyId,
+    tokenName,
+    privKey,
+    pubKey:    nacl.box.keyPair.fromSecretKey(privKey).publicKey,
+    cryptoKey: privKey.slice(0, 32),
+  };
+}
+
+function updateNftBadge() {
+  const badge = document.getElementById('nftBadge');
+  if (!allNfts.length) { badge.style.display='none'; return; }
+  const activeNames = allNfts
+    .filter(n => activeNftIds.has(n.policyId))
+    .map(n => n.tokenName);
+  badge.textContent = '⬡ ' + (activeNames.length === 1 ? activeNames[0] : activeNames.length+' journals');
+  badge.style.display = 'block';
+  badge.style.cursor = allNfts.length > 1 ? 'pointer' : 'default';
+  badge.onclick = allNfts.length > 1 ? showNftSelector : null;
+}
+
+function saveNftSelection() {
+  try {
+    const sel = { active: [...activeNftIds], write: writeNftId };
+    localStorage.setItem('kl_nft_sel_'+selectedNetwork, JSON.stringify(sel));
+  } catch {}
+}
+
+function loadNftSelection() {
+  try {
+    const raw = localStorage.getItem('kl_nft_sel_'+selectedNetwork);
+    if (!raw) return null;
+    const sel = JSON.parse(raw);
+    return sel.active || null;
+  } catch { return null; }
+}
+
+function showNftSelector() {
+  const overlay = document.getElementById('nftSelectorOverlay');
+  renderNftSelector();
+  overlay.classList.add('open');
+}
+
+function closeNftSelector() {
+  document.getElementById('nftSelectorOverlay').classList.remove('open');
+}
+
+function renderNftSelector() {
+  const list = document.getElementById('nftSelectorList');
+  list.innerHTML = allNfts.map(nft => {
+    const isActive  = activeNftIds.has(nft.policyId);
+    const isWrite   = writeNftId === nft.policyId;
+    return `<div class="nft-sel-row">
+      <label class="nft-sel-check">
+        <input type="checkbox" ${isActive?'checked':''} onchange="toggleNftActive('${nft.policyId}', this.checked)">
+        <div class="nft-sel-info">
+          <div class="nft-sel-name">⬡ ${esc(nft.tokenName)}</div>
+          <div class="nft-sel-policy">${nft.policyId.slice(0,16)}…</div>
+        </div>
+      </label>
+      <button class="nft-sel-write-btn ${isWrite?'active':''}" onclick="setWriteNft('${nft.policyId}')"
+        title="Write new entries with this key">
+        ${isWrite ? 'Writing' : 'Use for writing'}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function toggleNftActive(policyId, checked) {
+  if (checked) activeNftIds.add(policyId);
+  else {
+    if (activeNftIds.size <= 1) return; // Altid mindst én aktiv
+    activeNftIds.delete(policyId);
+    if (writeNftId === policyId) {
+      writeNftId = [...activeNftIds][0];
+    }
+  }
+  saveNftSelection();
+  updateNftBadge();
+  renderNftSelector();
+}
+
+function setWriteNft(policyId) {
+  writeNftId = policyId;
+  if (!activeNftIds.has(policyId)) activeNftIds.add(policyId);
+  // Opdater cryptoKey til den valgte NFT
+  const nft = allNfts.find(n => n.policyId === policyId);
+  if (nft) cryptoKey = nft.cryptoKey;
+  nftPolicyId  = policyId;
+  nftAssetName = nft?.tokenName || '';
+  saveNftSelection();
+  updateNftBadge();
+  renderNftSelector();
+  // Genrender kladder da NFT-valg kan være ændret
+  renderDraftList();
+}
 // Senderen krypterede med modtagerens Curve25519 key udledt fra deres Ed25519 pubkey
 // Modtageren dekrypterer med deres walletSignKey (som er SHA-256 af Ed25519 sig)
 // Vi bruger nacl.box.keyPair.fromSecretKey(clampCurve25519(walletSignKey)) som keypair
@@ -1639,7 +1795,8 @@ function addDraft() {
   const text = document.getElementById('noteText').value.trim();
   if (!text) { document.getElementById('noteText').style.borderColor='var(--danger)'; return; }
   document.getElementById('noteText').style.borderColor='';
-  drafts.push({ text, encHex: encryptText(text), time: new Date().toISOString() });
+  const nftId = writeNftId || allNfts[0]?.policyId;
+  drafts.push({ text, encHex: encryptWithNft(text, nftId), nftId, time: new Date().toISOString() });
   saveLocalStorage();
   clearNote();
   renderDraftList();
@@ -1664,18 +1821,33 @@ function renderDraftList() {
   if (!drafts.length) { document.getElementById('draftsSection').style.display='none'; el.innerHTML=''; return; }
   document.getElementById('draftsSection').style.display='block';
   const n = drafts.length;
-  document.getElementById('sendBarCount').textContent = n+(n===1?' note':' noter');
+  document.getElementById('sendBarCount').textContent = n+(n===1?' entry':' entries');
   document.getElementById('draftsCountBadge').textContent = n;
-  el.innerHTML = drafts.map((d,i)=>`
-    <div class="draft-card">
+
+  // Opdater write NFT indikator
+  const indicator = document.getElementById('writeNftIndicator');
+  if (allNfts.length > 1 && writeNftId) {
+    const nft = allNfts.find(n => n.policyId === writeNftId);
+    indicator.textContent = '⬡ '+esc(nft?.tokenName||'') + ' ▾';
+    indicator.style.display = 'inline';
+  } else {
+    indicator.style.display = 'none';
+  }
+
+  el.innerHTML = drafts.map((d,i) => {
+    const nftName = allNfts.length > 1
+      ? `<span style="font-family:var(--mono);font-size:9px;color:var(--accent);opacity:.7;margin-left:6px">⬡ ${esc(allNfts.find(n=>n.policyId===d.nftId)?.tokenName||'')}</span>`
+      : '';
+    return `<div class="draft-card">
       <div class="draft-card-body">
-        <div class="draft-card-time">${new Date(d.time).toLocaleString('da-DK')}</div>
+        <div class="draft-card-time">${new Date(d.time).toLocaleString('da-DK')}${nftName}</div>
         <div class="draft-card-text">${esc(d.text)}</div>
         <div class="draft-card-enc" id="draftEnc${i}">${d.encHex}</div>
-        <button class="toggle-btn" onclick="toggleDraftEnc(${i})" style="margin-top:8px">vis krypteret</button>
+        <button class="toggle-btn" onclick="toggleDraftEnc(${i})" style="margin-top:8px">show encrypted</button>
       </div>
-      <button class="draft-remove" onclick="removeDraft(${i})" title="Fjern">×</button>
-    </div>`).join('');
+      <button class="draft-remove" onclick="removeDraft(${i})" title="Remove">×</button>
+    </div>`;
+  }).join('');
   updateSizeIndicator();
 }
 
@@ -2182,7 +2354,7 @@ async function submitTx(signedCbor) {
 // ── Hent og vis noter fra kæden ───────────────────────────────────
 async function loadEntries() {
   const container = document.getElementById('entriesList');
-  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:1rem 0"><div class="spinner"></div> Henter fra kæden…</div>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:1rem 0"><div class="spinner"></div> Loading from chain…</div>';
 
   try {
     const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50');
@@ -2196,36 +2368,37 @@ async function loadEntries() {
         const data = our.json_metadata;
         if (data === null || data === undefined) continue;
 
-        // Nyt format: data er en array af noter, hver note er en array af chunks
-        // Gammelt format: data = { v:1, notes:[{d:[chunks]}] } eller { v:1, d:[chunks] }
         let notesList = [];
-
         if (Array.isArray(data)) {
-          // Nyt format: [ [chunks_note1], [chunks_note2], ... ]
           notesList = data.map(chunks => ({ d: chunks }));
-        } else if (data && data.v === 1 && Array.isArray(data.notes)) {
-          // Gammelt format med notes array
+        } else if (data?.v === 1 && Array.isArray(data.notes)) {
           notesList = data.notes;
-        } else if (data && data.v === 1 && Array.isArray(data.d)) {
-          // Gammelt format enkelt note
+        } else if (data?.v === 1 && Array.isArray(data.d)) {
           notesList = [{ d: data.d }];
-        } else {
-          continue;
-        }
+        } else { continue; }
 
         notesList.forEach((note,idx) => {
           if (!Array.isArray(note.d)) return;
-          // Chunks kan være hex-strings eller bytes (Blockfrost returnerer bytes som hex med evt. prefix)
           const encHex = note.d.map(chunk => {
             if (typeof chunk === 'string') return chunk.replace(/^0x/,'');
-            // Blockfrost returnerer bytes-felter som { "bytes": "hexstring" }
-            if (chunk && typeof chunk === 'object' && chunk.bytes) return chunk.bytes;
+            if (chunk?.bytes) return chunk.bytes;
             return '';
           }).join('');
           if (!encHex) return;
-          const text = decryptHex(encHex);
-          if (!text) return;
-          found.push({ text, encHex, txHash:tx.tx_hash, noteIndex:idx, totalInBatch:notesList.length, time:new Date(tx.block_time*1000).toISOString() });
+
+          // Forsøg dekryptering med alle NFTs — gem hvilken der virkede
+          const result = decryptHexMulti(encHex);
+          if (!result) return;
+
+          found.push({
+            text: result.text,
+            encHex,
+            nftId: result.nftId,
+            txHash: tx.tx_hash,
+            noteIndex: idx,
+            totalInBatch: notesList.length,
+            time: new Date(tx.block_time*1000).toISOString()
+          });
         });
       } catch { continue; }
     }
@@ -2239,13 +2412,21 @@ async function loadEntries() {
     savedEntries = found;
     saveLocalStorage();
     updateNavEntries();
-    renderEntries(found);
-    document.getElementById('entryCount').textContent = found.length+(found.length===1?' note':' noter');
+
+    // Filtrer på aktive NFTs
+    const visible = found.filter(e => !e.nftId || activeNftIds.has(e.nftId));
+    renderEntries(visible);
+    const total = found.length;
+    const shown = visible.length;
+    document.getElementById('entryCount').textContent =
+      shown === total ? total+(total===1?' entry':' entries')
+                      : shown+' / '+total+(total===1?' entry':' entries');
 
   } catch(e) {
     if (savedEntries.length) {
-      renderEntries(savedEntries);
-      document.getElementById('entryCount').textContent = savedEntries.length+' (lokalt cache)';
+      const visible = savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId));
+      renderEntries(visible);
+      document.getElementById('entryCount').textContent = visible.length+' (local cache)';
     } else {
       container.innerHTML = `<div class="empty-state"><span style="color:var(--danger)">${esc(e.message)}</span></div>`;
     }
@@ -2257,19 +2438,22 @@ const isTxHash = h => typeof h === 'string' && /^[0-9a-f]{64}$/.test(h);
 function renderEntries(entries) {
   const el = document.getElementById('entriesList');
   if (!entries.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div>Ingen noter på kæden endnu.<div style="margin-top:14px"><button onclick="showScreen('write')">Skriv din første note</button></div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div>No entries on chain yet.<div style="margin-top:14px"><button onclick="showScreen('write')">Write your first entry</button></div></div>`;
     return;
   }
   el.innerHTML = entries.map((e,i) => {
-    const date = new Date(e.time).toLocaleString('da-DK',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const date    = new Date(e.time).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const preview = e.text.length > 180 ? e.text.slice(0,180).trimEnd()+'…' : null;
-    const batch = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
+    const batch   = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
+    const nftTag  = allNfts.length > 1 && e.nftId
+      ? `<span class="batch-tag" style="color:var(--accent)">⬡ ${esc(allNfts.find(n=>n.policyId===e.nftId)?.tokenName||'')}</span>`
+      : '';
     return `<div class="entry-card" id="ec${i}" onclick="toggleEntry(${i})">
       <div class="entry-head">
-        <div><span class="entry-time">${date}</span>${batch}</div>
+        <div><span class="entry-time">${date}</span>${batch}${nftTag}</div>
         <div class="entry-actions">
-          <button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">krypteret</button>
-      ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}
+          <button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">encrypted</button>
+          ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}
         </div>
       </div>
       ${preview
@@ -2283,22 +2467,27 @@ function renderEntries(entries) {
 }
 
 function toggleEntry(i) {
-  const card = document.getElementById('ec'+i);
+  const card    = document.getElementById('ec'+i);
   const preview = document.getElementById('ep'+i);
-  if (!preview) return; // kort note, intet at toggle
+  if (!preview) return;
   card.classList.toggle('entry-expanded');
 }
 
 function filterEntries() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  if (!q) { renderEntries(savedEntries); document.getElementById('entryCount').textContent = savedEntries.length+(savedEntries.length===1?' note':' noter'); return; }
-  const filtered = savedEntries.filter(e => e.text.toLowerCase().includes(q));
+  const base = savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId));
+  if (!q) {
+    renderEntries(base);
+    document.getElementById('entryCount').textContent = base.length+(base.length===1?' entry':' entries');
+    return;
+  }
+  const filtered = base.filter(e => e.text.toLowerCase().includes(q));
   if (!filtered.length) {
-    document.getElementById('entriesList').innerHTML = `<div class="no-results">Ingen noter matcher "${esc(q)}"</div>`;
+    document.getElementById('entriesList').innerHTML = `<div class="no-results">No entries match "${esc(q)}"</div>`;
   } else {
     renderEntries(filtered);
   }
-  document.getElementById('entryCount').textContent = filtered.length+' / '+savedEntries.length;
+  document.getElementById('entryCount').textContent = filtered.length+' / '+base.length;
 }
 
 function toggleEnc(i) {
