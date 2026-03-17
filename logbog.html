@@ -383,7 +383,12 @@
         </div>
 
         <div class="transfer-warn">
-          ⚠ This permanently transfers all journal access to the recipient. Once sent, you will no longer be able to read or write entries.
+          ⚠ This permanently transfers journal access to the recipient. Once sent, you will no longer be able to read or write entries for the transferred key.
+        </div>
+
+        <div class="nft-card" style="margin-bottom:1rem" id="transferNftSelector">
+          <div class="nft-card-title">Journal key to transfer</div>
+          <div id="transferNftList" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
 
         <div class="nft-card" style="margin-bottom:1.25rem">
@@ -724,6 +729,13 @@ function showScreen(name) {
     renderDraftList();
   }
   if (name==='read') loadEntries();
+  if (name==='transfer') {
+    renderTransferNftList();
+    document.getElementById('transferConfirm').classList.remove('show');
+    document.getElementById('transferErr').style.display = 'none';
+    document.getElementById('transferStatus').style.display = 'none';
+    document.getElementById('transferBtn').disabled = false;
+  }
 }
 
 function setStatus(msg, type) {
@@ -1577,6 +1589,35 @@ function skipCborValue(bytes, i) {
 }
 
 // ── Transfer journal ──────────────────────────────────────────────
+let selectedTransferNftId = null;
+
+function renderTransferNftList() {
+  const list = document.getElementById('transferNftList');
+  if (!allNfts.length) {
+    list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--danger)">No journal NFTs found in wallet.</div>';
+    return;
+  }
+  // Sæt default til første
+  if (!selectedTransferNftId || !allNfts.find(n => n.policyId === selectedTransferNftId)) {
+    selectedTransferNftId = allNfts[0].policyId;
+  }
+  list.innerHTML = allNfts.map(nft => {
+    const isSelected = nft.policyId === selectedTransferNftId;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+      <input type="radio" name="transferNft" value="${nft.policyId}"
+        ${isSelected?'checked':''}
+        onchange="selectedTransferNftId='${nft.policyId}'"
+        style="accent-color:var(--accent);cursor:pointer">
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text)">⬡ ${esc(nft.tokenName)}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5">${nft.policyId.slice(0,20)}…</div>
+      </div>
+    </div>`;
+  }).join('');
+  // Skjul selector hvis kun én NFT
+  document.getElementById('transferNftSelector').style.display = allNfts.length > 1 ? 'block' : 'none';
+}
+
 async function executeTransfer() {
   const recipientAddr = document.getElementById('transferAddr').value.trim();
   const btn           = document.getElementById('transferBtn');
@@ -1584,7 +1625,9 @@ async function executeTransfer() {
   const errEl         = document.getElementById('transferErr');
 
   if (!recipientAddr) { errEl.textContent='Please enter a recipient address.'; errEl.style.display='block'; return; }
-  if (!nftPrivKey || !nftPolicyId) { errEl.textContent='No journal NFT found in this wallet.'; errEl.style.display='block'; return; }
+
+  const nft = allNfts.find(n => n.policyId === selectedTransferNftId) || allNfts[0];
+  if (!nft) { errEl.textContent='No journal NFT found in this wallet.'; errEl.style.display='block'; return; }
 
   btn.disabled = true;
   errEl.style.display = 'none';
@@ -1603,25 +1646,19 @@ async function executeTransfer() {
 
   try {
     setTransStatus('Fetching recipient public key…', 0);
-
-    // Hent modtagerens public key fra kæden
     const recipientPubKey = await fetchWalletPublicKey(recipientAddr);
     if (!recipientPubKey) throw new Error('Could not find recipient public key. They must have made at least one transaction.');
 
     setTransStatus('Re-encrypting journal key…', 1);
-
-    // Re-kryptér journal private key med modtagerens Curve25519 public key
-    // Vi bruger recipient Cardano Ed25519 public key som seed til Curve25519
     const recipientCurveKey = await ed25519ToCurve25519(recipientPubKey);
-    const reEncrypted = encryptNFTKeyForRecipient(nftPrivKey, recipientCurveKey);
+    const reEncrypted = encryptNFTKeyForRecipient(nft.privKey, recipientCurveKey);
 
     setTransStatus('Building transfer transaction…', 2);
 
     const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
-    // Find UTxO med NFT
-    const nftUnit = nftPolicyId + b2h(new TextEncoder().encode(nftAssetName));
+    const nftUnit = nft.policyId + b2h(new TextEncoder().encode(nft.tokenName));
     const nftUtxo = utxos.find(u => u.amount.some(a => a.unit === nftUnit));
-    if (!nftUtxo) throw new Error('NFT not found in UTxOs.');
+    if (!nftUtxo) throw new Error('NFT not found in UTxOs. It may still be confirming.');
 
     const adaUtxo = utxos.find(u => {
       const lv = u.amount.find(a=>a.unit==='lovelace');
@@ -1631,21 +1668,28 @@ async function executeTransfer() {
     const params = await bfGet('epochs/latest/parameters');
     const tip    = await bfGet('blocks/latest');
 
-    const finalTxCbor = await buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncrypted);
+    const finalTxCbor = await buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncrypted, nft);
 
     setTransStatus('Submitting…', 3);
     const txHash = await submitTx(finalTxCbor);
 
-    // Ryd lokal adgang
-    nftPrivKey = null; nftPubKey = null; cryptoKey = null;
-    try { localStorage.removeItem('kl_entries_'+selectedNetwork); localStorage.removeItem('kl_drafts_'+selectedNetwork); } catch {}
+    // Fjern den transfererede NFT fra allNfts
+    allNfts = allNfts.filter(n => n.policyId !== nft.policyId);
+    activeNftIds.delete(nft.policyId);
+    if (writeNftId === nft.policyId) writeNftId = allNfts[0]?.policyId || null;
+
+    // Ryd lokal cache for denne wallet
+    try {
+      const cacheKey = selectedNetwork+'_'+walletAddr;
+      localStorage.removeItem('kl_entries_'+cacheKey);
+      localStorage.removeItem('kl_drafts_'+cacheKey);
+    } catch {}
 
     document.getElementById('transferTxHash').textContent = txHash;
     document.getElementById('transferExplorerLink').href = NETWORKS[selectedNetwork].explorerTx + txHash;
     document.getElementById('transferConfirm').classList.add('show');
     setTransStatus('Transfer complete', 3, 'ok');
 
-    // Reset app efter 5 sek
     setTimeout(() => location.reload(), 5000);
 
   } catch(e) {
@@ -1691,10 +1735,11 @@ async function ed25519ToCurve25519(ed25519PubKey) {
   return nacl.box.keyPair.fromSecretKey(clampCurve25519(hash)).publicKey;
 }
 
-async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncryptedKey) {
-  const nftUnit      = nftPolicyId + b2h(new TextEncoder().encode(nftAssetName));
-  const policyBytes  = h2b(nftPolicyId);
-  const tokenBytes   = new TextEncoder().encode(nftAssetName);
+async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncryptedKey, nft) {
+  const usePolicyId   = nft?.policyId  || nftPolicyId;
+  const useAssetName  = nft?.tokenName || nftAssetName;
+  const policyBytes  = h2b(usePolicyId);
+  const tokenBytes   = new TextEncoder().encode(useAssetName);
   const senderBytes  = h2b(bech32ToHex(walletAddr));
   const recipPrefix  = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
   const recipBytes   = h2b(bech32ToHex(recipientAddr));
