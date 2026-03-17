@@ -828,6 +828,8 @@ function decryptHexMulti(hex) {
   if (allNfts.length > 0) {
     console.log('[decrypt] failed — allNfts keys:', allNfts.map(n => b2h(n.cryptoKey).slice(0,12)));
     console.log('[decrypt] encHex length:', hex.length, 'first 20:', hex.slice(0,20));
+  } else {
+    console.log('[decrypt] failed — allNfts is EMPTY at time of decrypt');
   }
   return null;
 }
