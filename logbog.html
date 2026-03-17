@@ -1701,15 +1701,30 @@ async function executeTransfer() {
 
 async function fetchWalletPublicKey(addr) {
   try {
-    const txs = await bfGet('addresses/'+addr+'/transactions?order=asc&count=1');
+    // Vi søger op til 20 transaktioner for at finde en hvor addr er input (udgående)
+    // Kun udgående txs har addr's public key i witness sættet
+    const txs = await bfGet('addresses/'+addr+'/transactions?order=asc&count=20');
     if (!txs.length) return null;
-    const utxos = await bfGet('txs/'+txs[0].tx_hash+'/utxos');
-    const input = utxos.inputs.find(i => i.address === addr);
-    if (!input) return null;
-    const txCbor = await fetch(NETWORKS[selectedNetwork].bfBase+'/txs/'+txs[0].tx_hash+'/cbor', {headers:{'project_id':bfKey}}).then(r=>r.json());
-    if (!txCbor?.cbor) return null;
-    const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
-    return pubKey;
+
+    for (const tx of txs) {
+      try {
+        const utxos = await bfGet('txs/'+tx.tx_hash+'/utxos');
+        // Tjek om addr er blandt inputs (udgående tx fra addr)
+        const isSpending = utxos.inputs.some(i => i.address === addr);
+        if (!isSpending) continue;
+
+        const txCbor = await fetch(
+          NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
+          { headers: { 'project_id': bfKey } }
+        ).then(r => r.json());
+        if (!txCbor?.cbor) continue;
+
+        const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
+        if (pubKey) return pubKey;
+      } catch { continue; }
+    }
+
+    return null;
   } catch { return null; }
 }
 
