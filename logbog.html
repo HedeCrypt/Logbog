@@ -262,6 +262,7 @@
       <button class="ghost" onclick="openSettings()" id="settingsBtn" style="display:flex;align-items:center;gap:6px;justify-content:center;opacity:.6">
         <span style="font-size:13px">⚙</span> Settings
       </button>
+      <button class="ghost" id="logoutBtn" onclick="logout()" style="display:none;opacity:.4;font-size:11px">Sign out</button>
     </div>
   </aside>
 
@@ -504,6 +505,9 @@ const NETWORKS = {
 
 let selectedNetwork = 'mainnet';
 
+// ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
+const DEV_BF_KEYS = { preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F' };
+
 function selectNetwork(net) {
   selectedNetwork = net;
   const cfg = NETWORKS[net];
@@ -601,7 +605,11 @@ async function loadBfKey(storageKey) {
   }
 
   // Fallback: gammel ukrypteret nøgle (migrér ved næste login)
-  return localStorage.getItem('kl_bfkey_'+storageKey) || '';
+  const legacy = localStorage.getItem('kl_bfkey_'+storageKey) || '';
+  if (legacy) return legacy;
+
+  // Dev fallback
+  return DEV_BF_KEYS[storageKey] || '';
 }
 
 // ── Sikker nøgleopbevaring via Web Crypto AES-GCM ────────────────
@@ -710,6 +718,26 @@ function resetLockTimer() {
   lockTimer = setTimeout(lockSession, LOCK_TIMEOUT_MS);
 }
 
+function logout() {
+  secureVault.clear();
+  bfKey = '';
+  walletApi = null; walletAddr = null; stakeAddr = null;
+  allNfts = []; activeNftIds = new Set(); writeNftId = null;
+  drafts = []; savedEntries = [];
+  clearTimeout(lockTimer);
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('walletDot').classList.remove('on');
+  document.getElementById('walletName').textContent = 'Not connected';
+  document.getElementById('walletAddr').style.display = 'none';
+  document.getElementById('networkBadge').style.display = 'none';
+  document.getElementById('nftBadge').style.display = 'none';
+  document.getElementById('newNoteBtn').disabled = true;
+  document.getElementById('readBtn').disabled = true;
+  document.getElementById('transferNavBtn').disabled = true;
+  document.getElementById('connectBtn').disabled = false;
+  document.getElementById('connectBtn').textContent = 'Connect Eternl';
+  showScreen('connect');
+}
 function lockSession() {
   // Ryd alle sensitive nøgler fra hukommelsen
   secureVault.clear();
@@ -822,7 +850,8 @@ async function connectWallet() {
   const netCfg = NETWORKS[selectedNetwork];
   const hasAnyKey = localStorage.getItem('kl_bfkey_enc_'+netCfg.storageKey) ||
                     localStorage.getItem('kl_bfkey_'+netCfg.storageKey) ||
-                    sessionStorage.getItem('kl_bfkey_tmp_'+netCfg.storageKey);
+                    sessionStorage.getItem('kl_bfkey_tmp_'+netCfg.storageKey) ||
+                    DEV_BF_KEYS[netCfg.storageKey];
 
   if (!hasAnyKey) {
     document.getElementById('bfKeyMissing').style.display = 'block';
@@ -885,7 +914,8 @@ async function connectWallet() {
     document.getElementById('transferNavBtn').disabled = false;
 
     loadLocalStorage();
-    resetLockTimer(); // Start inaktivitets-timer
+    resetLockTimer();
+    document.getElementById('logoutBtn').style.display = 'block';
 
     if (nftFound) {
       showScreen('write');
@@ -1002,11 +1032,13 @@ async function detectJournalNFT() {
       pendingNftUnit = pending;
       const privKey = await findTransferKey();
       if (privKey) {
-        // Valider at nøglen er korrekt ved at sammenligne med pubKey i NFT metadata
         if (pending.pubKey) {
           const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
           const match = b2h(derivedPub) === b2h(pending.pubKey);
-          if (!match) { console.warn('Transfer key mismatch for', pending.tokenName); continue; }
+          console.log('Transfer key validation:', pending.tokenName, match ? 'MATCH ✓' : 'MISMATCH ✗', 'derived:', b2h(derivedPub).slice(0,16), 'expected:', b2h(pending.pubKey).slice(0,16));
+          if (!match) { continue; }
+        } else {
+          console.warn('No pubKey in metadata for', pending.tokenName, '— cannot validate');
         }
         allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
       }
