@@ -977,6 +977,7 @@ async function detectJournalNFT() {
         if (!encPrivKeyBytes) continue;
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
+        console.log('detectJournalNFT:', tokenName, 'decryptNFTKey:', privKey ? 'OK' : 'FAILED → pending');
         if (privKey) {
           allNfts.push(makeNftEntry(privKey, policyId, tokenName));
         } else {
@@ -993,7 +994,9 @@ async function detectJournalNFT() {
     }
     pendingNftUnit = null;
 
-  } catch {}
+  } catch(e) {
+    console.warn('detectJournalNFT outer catch:', e.message || e);
+  }
 
   if (!allNfts.length) return false;
 
