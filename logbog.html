@@ -906,6 +906,7 @@ async function deriveKey() {
 
   // walletSignKey bruges KUN til at kryptere/dekryptere NFT's private key
   // Notes krypteres altid med NFT-nøglen — cryptoKey sættes af NFT-detection
+  const hash = await crypto.subtle.digest('SHA-256', seedBytes);
   walletSignKey = new Uint8Array(hash);
   // cryptoKey sættes IKKE her — det sættes af detectJournalNFT via setWriteNft
 }
