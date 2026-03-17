@@ -1032,6 +1032,7 @@ async function detectJournalNFT() {
       pendingNftUnit = pending;
       const privKey = await findTransferKey();
       if (privKey) {
+        console.log('pending.pubKey for', pending.tokenName, ':', pending.pubKey ? b2h(pending.pubKey).slice(0,16)+'…' : 'NULL');
         if (pending.pubKey) {
           const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
           const match = b2h(derivedPub) === b2h(pending.pubKey);
