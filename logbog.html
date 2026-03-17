@@ -1858,9 +1858,9 @@ async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reE
 
   const minUtxoAda = 1500000n;
 
-  // Metadata med re-krypteret nøgle (label 1338)
+  // Metadata med re-krypteret nøgle (label 1338) + afsender-adresse
   const reEncChunks = chunkBytes(reEncryptedKey, 64);
-  const transferMeta = { transfer: 1, encPrivKey: reEncChunks };
+  const transferMeta = { transfer: 1, encPrivKey: reEncChunks, from: walletAddr };
   const auxMetaValue  = encodeCborValue(transferMeta);
   const auxDataBytes  = encodeCborMap([[cborUint(1338), auxMetaValue]]);
   const auxHash       = await blake2b256(auxDataBytes);
@@ -2536,19 +2536,35 @@ async function loadEntries() {
   container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:1rem 0"><div class="spinner"></div> Loading from chain…</div>';
 
   try {
-    // Søg noter for hver aktiv NFT via policy ID
-    // Dette finder noter uanset hvilken adresse der sendte dem
+    // Byg liste af adresser der skal søges på
+    // Start med vores egen adresse
+    const searchAddrs = new Set([walletAddr]);
+
+    // Find afsender-adresser fra transfer-transaktioner (label 1338 med "from" felt)
+    try {
+      for (let page = 1; page <= 5; page++) {
+        const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
+        if (!txs.length) break;
+        for (const tx of txs) {
+          try {
+            const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
+            const m = metas.find(m => parseInt(m.label) === 1338);
+            if (m?.json_metadata?.from) searchAddrs.add(m.json_metadata.from);
+          } catch { continue; }
+        }
+        if (txs.length < 50) break;
+      }
+    } catch {}
+
+    console.log('[loadEntries] searching', searchAddrs.size, 'addresses:', [...searchAddrs].map(a=>a.slice(0,20)));
+
     const found = [];
     const seenTx = new Set();
 
-    for (const nft of allNfts) {
-      if (!activeNftIds.has(nft.policyId)) continue;
+    for (const addr of searchAddrs) {
       try {
-        // Blockfrost: hent alle transaktioner der involverer dette asset
-        const assetUnit = nft.policyId + b2h(new TextEncoder().encode(nft.tokenName));
-        const assetTxs = await bfGet('assets/'+assetUnit+'/transactions?order=desc&count=100');
-
-        for (const tx of assetTxs) {
+        const txs = await bfGet('addresses/'+addr+'/transactions?order=desc&count=100');
+        for (const tx of txs) {
           if (seenTx.has(tx.tx_hash)) continue;
           seenTx.add(tx.tx_hash);
           try {
@@ -2559,16 +2575,10 @@ async function loadEntries() {
             if (data === null || data === undefined) continue;
 
             let notesList = [];
-            if (Array.isArray(data)) {
-              notesList = data.map(chunks => ({ d: chunks }));
-            } else if (data?.v === 1 && Array.isArray(data.notes)) {
-              notesList = data.notes;
-            } else if (data?.v === 1 && Array.isArray(data.d)) {
-              notesList = [{ d: data.d }];
-            } else { continue; }
-
-            // Hent block_time fra tx info
-            const txInfo = await bfGet('txs/'+tx.tx_hash);
+            if (Array.isArray(data)) notesList = data.map(chunks => ({ d: chunks }));
+            else if (data?.v === 1 && Array.isArray(data.notes)) notesList = data.notes;
+            else if (data?.v === 1 && Array.isArray(data.d)) notesList = [{ d: data.d }];
+            else continue;
 
             notesList.forEach((note, idx) => {
               if (!Array.isArray(note.d)) return;
@@ -2578,19 +2588,14 @@ async function loadEntries() {
                 return '';
               }).join('');
               if (!encHex) return;
-
               const result = decryptHexMulti(encHex);
               console.log('[entries] tx', tx.tx_hash.slice(0,8), 'note', idx, result ? '✓ '+result.nftId?.slice(0,8) : '✗ failed');
               if (!result) return;
-
               found.push({
-                text: result.text,
-                encHex,
-                nftId: result.nftId,
-                txHash: tx.tx_hash,
-                noteIndex: idx,
-                totalInBatch: notesList.length,
-                time: new Date(txInfo.block_time * 1000).toISOString()
+                text: result.text, encHex,
+                nftId: result.nftId, txHash: tx.tx_hash,
+                noteIndex: idx, totalInBatch: notesList.length,
+                time: new Date(tx.block_time * 1000).toISOString()
               });
             });
           } catch { continue; }
@@ -2598,49 +2603,7 @@ async function loadEntries() {
       } catch { continue; }
     }
 
-    // Søg også på wallet-adresse for noter uden NFT (legacy og drafts sendt fra denne adresse)
-    try {
-      const walletTxs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50');
-      for (const tx of walletTxs) {
-        if (seenTx.has(tx.tx_hash)) continue;
-        seenTx.add(tx.tx_hash);
-        try {
-          const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
-          const our = metas.find(m => parseInt(m.label) === METADATA_LABEL);
-          if (!our) continue;
-          const data = our.json_metadata;
-          if (!data) continue;
-
-          let notesList = [];
-          if (Array.isArray(data)) notesList = data.map(chunks => ({ d: chunks }));
-          else if (data?.v === 1 && Array.isArray(data.notes)) notesList = data.notes;
-          else if (data?.v === 1 && Array.isArray(data.d)) notesList = [{ d: data.d }];
-          else continue;
-
-          const txInfo = await bfGet('txs/'+tx.tx_hash);
-
-          notesList.forEach((note, idx) => {
-            if (!Array.isArray(note.d)) return;
-            const encHex = note.d.map(chunk => {
-              if (typeof chunk === 'string') return chunk.replace(/^0x/, '');
-              if (chunk?.bytes) return chunk.bytes;
-              return '';
-            }).join('');
-            if (!encHex) return;
-            const result = decryptHexMulti(encHex);
-            if (!result) return;
-            found.push({
-              text: result.text, encHex,
-              nftId: result.nftId, txHash: tx.tx_hash,
-              noteIndex: idx, totalInBatch: notesList.length,
-              time: new Date(txInfo.block_time * 1000).toISOString()
-            });
-          });
-        } catch { continue; }
-      }
-    } catch {}
-
-    // Sorter efter tid, nyeste først
+    // Sorter nyeste først
     found.sort((a, b) => new Date(b.time) - new Date(a.time));
 
     // Tilføj lokalt gemte der ikke er på kæden endnu
