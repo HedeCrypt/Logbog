@@ -809,7 +809,6 @@ function decryptHexMulti(hex) {
   const nonce = raw.slice(0, 24);
   const box   = raw.slice(24);
 
-  // Forsøg alle kendte NFT-nøgler
   for (const nft of allNfts) {
     try {
       const dec = nacl.secretbox.open(box, nonce, nft.cryptoKey);
@@ -817,9 +816,7 @@ function decryptHexMulti(hex) {
     } catch {}
   }
 
-  // Legacy: noter krypteret med walletSignKey direkte (før NFT-systemet)
-  // Disse kan KUN læses hvis wallet-nøglen er den samme — NFT-ejerskab giver ikke adgang
-  // Ved fremtidig brug bør disse re-krypteres med NFT-nøglen
+  // Legacy
   const wsKey = secureVault.getWalletSignKey();
   if (wsKey) {
     try {
@@ -828,6 +825,10 @@ function decryptHexMulti(hex) {
     } catch {}
   }
 
+  if (allNfts.length > 0) {
+    console.log('[decrypt] failed — allNfts keys:', allNfts.map(n => b2h(n.cryptoKey).slice(0,12)));
+    console.log('[decrypt] encHex length:', hex.length, 'first 20:', hex.slice(0,20));
+  }
   return null;
 }
 
