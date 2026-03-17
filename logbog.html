@@ -1215,8 +1215,16 @@ async function mintJournalNFT() {
     const encPrivKey = encryptNFTKey(privKey);
 
     setMintStatus('Fetching UTxOs…');
-    const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
-    if (!utxos.length) throw new Error('No UTxOs found. Fund your address first.');
+    let utxos;
+    try {
+      utxos = await bfGet('addresses/'+walletAddr+'/utxos');
+    } catch(e) {
+      if (e.message?.includes('not been found') || e.message?.includes('404')) {
+        throw new Error('This wallet has no transaction history on chain yet. Send some tADA to your address first, then try again.');
+      }
+      throw e;
+    }
+    if (!utxos.length) throw new Error('No UTxOs found. Send tADA to your address from the Cardano faucet first.');
     // Brug kun rene ADA UTxOs — undgå at røre eksisterende tokens
     const adaOnly = utxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
     const utxoPool = adaOnly.length > 0 ? adaOnly : utxos;
@@ -1268,15 +1276,15 @@ async function mintJournalNFT() {
     // Brug Eternl's submitTx direkte — undgår Blockfrost multi-sig dialog
     const txHash = await submitViaEternl(txCbor);
 
-    // Gem state
-    nftPrivKey   = privKey;
-    nftPubKey    = pubKey;
+    // Opdater multi-NFT state
+    const newNft = makeNftEntry(privKey, policyId, tokenName);
+    allNfts = [newNft];
+    activeNftIds = new Set([policyId]);
+    writeNftId = policyId;
+    cryptoKey = newNft.cryptoKey;
     nftPolicyId  = policyId;
     nftAssetName = tokenName;
-    cryptoKey    = privKey.slice(0, 32);
-
-    document.getElementById('nftBadge').textContent = '⬡ '+tokenName;
-    document.getElementById('nftBadge').style.display = 'block';
+    updateNftBadge();
 
     setMintStatus('Minted! Waiting for confirmation…', 'ok');
 
