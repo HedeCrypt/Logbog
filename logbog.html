@@ -393,8 +393,11 @@
 
         <div class="nft-card" style="margin-bottom:1.25rem">
           <div class="nft-card-title">Recipient wallet address</div>
-          <div class="nft-field" style="margin-bottom:0">
+          <div class="nft-field" style="margin-bottom:8px">
             <input type="text" id="transferAddr" placeholder="addr1… or addr_test1…" spellcheck="false" autocomplete="off" style="font-size:11px">
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.6;line-height:1.6">
+            ⚠ The recipient must have made at least one outgoing transaction on-chain before the transfer. This is required to derive their public key for encryption.
           </div>
         </div>
 
@@ -1118,14 +1121,19 @@ function setWriteNft(policyId) {
   // Genrender kladder da NFT-valg kan være ændret
   renderDraftList();
 }
-// Senderen krypterede med modtagerens Curve25519 key udledt fra deres Ed25519 pubkey
-// Modtageren dekrypterer med deres walletSignKey (som er SHA-256 af Ed25519 sig)
-// Vi bruger nacl.box.keyPair.fromSecretKey(clampCurve25519(walletSignKey)) som keypair
+// Søg efter transfer-transaktion (label 1338) til denne wallet
+// Afsenderen krypterede med: ed25519ToCurve25519(modtagerens Ed25519 pubkey)
+// Det svarer til: nacl.box.keyPair.fromSecretKey(clampCurve25519(SHA256(ed25519Pubkey))).publicKey
+// Modtageren dekrypterer med den tilsvarende secret key udledt fra sin egen Ed25519 pubkey
 async function findTransferKey() {
   try {
-    const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(walletSignKey));
+    // Udled vores Curve25519 keypair fra vores egen Ed25519 public key
+    const myEd25519PubKey = await getOwnEd25519PubKey();
+    if (!myEd25519PubKey) return null;
 
-    // Søg op til 500 transaktioner (10 sider á 50) for at håndtere aktive wallets
+    const mySeed    = await sha256(myEd25519PubKey);
+    const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(mySeed));
+
     for (let page = 1; page <= 10; page++) {
       const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
       if (!txs.length) break;
@@ -1146,8 +1154,28 @@ async function findTransferKey() {
           if (privKey) return privKey;
         } catch { continue; }
       }
+      if (txs.length < 50) break;
+    }
+  } catch {}
+  return null;
+}
 
-      if (txs.length < 50) break; // Ingen flere sider
+// Hent vores egen Ed25519 public key fra kæden (fra vores egne udgående txs)
+async function getOwnEd25519PubKey() {
+  try {
+    const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=asc&count=20');
+    for (const tx of txs) {
+      try {
+        const utxos = await bfGet('txs/'+tx.tx_hash+'/utxos');
+        if (!utxos.inputs.some(i => i.address === walletAddr)) continue;
+        const txCbor = await fetch(
+          NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
+          { headers: { 'project_id': bfKey } }
+        ).then(r => r.json());
+        if (!txCbor?.cbor) continue;
+        const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
+        if (pubKey) return pubKey;
+      } catch { continue; }
     }
   } catch {}
   return null;
