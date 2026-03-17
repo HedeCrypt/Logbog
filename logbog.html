@@ -1234,9 +1234,8 @@ async function mintJournalNFT() {
     // One-shot minting policy: scriptet bruger tx input hash som nonce
     // Policy: native script { type: "sig", keyHash: <pubKeyHash> } kombineret med
     // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
-    // Vi bruger en enkel "sig" policy med wallet payment key hash
-    const addrInfo = await bfGet('addresses/'+walletAddr);
-    const paymentKeyHash = addrInfo.payment_script_hash || await getPaymentKeyHash();
+    // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
+    const paymentKeyHash = await getPaymentKeyHash();
 
     // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
     const lockSlot = tip.slot + 600; // Matcher TTL — policy låser permanent efter dette
@@ -2579,19 +2578,20 @@ function jumpToEntry(idx) {
 // ── Local storage ─────────────────────────────────────────────────
 function saveLocalStorage() {
   try {
-    const net = selectedNetwork;
-    localStorage.setItem('kl_drafts_'+net,  JSON.stringify(drafts));
-    localStorage.setItem('kl_entries_'+net, JSON.stringify(savedEntries));
+    const key = selectedNetwork+'_'+walletAddr;
+    localStorage.setItem('kl_drafts_'+key,  JSON.stringify(drafts));
+    localStorage.setItem('kl_entries_'+key, JSON.stringify(savedEntries));
   } catch {}
 }
 
 function loadLocalStorage() {
   try {
-    const net = selectedNetwork;
-    const d = localStorage.getItem('kl_drafts_'+net);
-    const e = localStorage.getItem('kl_entries_'+net);
-    if (d) drafts = JSON.parse(d);
-    if (e) savedEntries = JSON.parse(e);
+    const key = selectedNetwork+'_'+walletAddr;
+    const d = localStorage.getItem('kl_drafts_'+key);
+    const e = localStorage.getItem('kl_entries_'+key);
+    // Ryd ved skift — sæt til tom hvis ingen cache for denne wallet
+    drafts       = d ? JSON.parse(d) : [];
+    savedEntries = e ? JSON.parse(e) : [];
     updateNavEntries();
     updateSidebarDrafts();
     if (drafts.length) renderDraftList();
