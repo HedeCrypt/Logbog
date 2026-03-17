@@ -2549,7 +2549,12 @@ async function loadEntries() {
           try {
             const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
             const m = metas.find(m => parseInt(m.label) === 1338);
-            if (m?.json_metadata?.from) searchAddrs.add(m.json_metadata.from);
+            if (m?.json_metadata?.from) {
+              console.log('[loadEntries] found from addr:', m.json_metadata.from.slice(0,20));
+              searchAddrs.add(m.json_metadata.from);
+            } else if (m) {
+              console.log('[loadEntries] label 1338 found but no from field:', JSON.stringify(m.json_metadata).slice(0,80));
+            }
           } catch { continue; }
         }
         if (txs.length < 50) break;
