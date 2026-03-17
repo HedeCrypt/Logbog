@@ -978,10 +978,21 @@ async function detectJournalNFT() {
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
         console.log('detectJournalNFT:', tokenName, 'decryptNFTKey:', privKey ? 'OK' : 'FAILED → pending');
+
+        // Udtræk pubKey fra metadata til validering ved transfer-nøgle
+        let metaPubKey = null;
+        const rawPub = tokenData.pubKey;
+        if (rawPub) {
+          const pubHex = Array.isArray(rawPub)
+            ? rawPub.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+            : (typeof rawPub==='string' ? rawPub.replace(/^0x/i,'') : '');
+          if (pubHex) metaPubKey = h2b(pubHex);
+        }
+
         if (privKey) {
           allNfts.push(makeNftEntry(privKey, policyId, tokenName));
         } else {
-          pendingUnits.push({ policyId, tokenName });
+          pendingUnits.push({ policyId, tokenName, pubKey: metaPubKey });
         }
       } catch { continue; }
     }
@@ -990,7 +1001,15 @@ async function detectJournalNFT() {
     for (const pending of pendingUnits) {
       pendingNftUnit = pending;
       const privKey = await findTransferKey();
-      if (privKey) allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
+      if (privKey) {
+        // Valider at nøglen er korrekt ved at sammenligne med pubKey i NFT metadata
+        if (pending.pubKey) {
+          const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
+          const match = b2h(derivedPub) === b2h(pending.pubKey);
+          if (!match) { console.warn('Transfer key mismatch for', pending.tokenName); continue; }
+        }
+        allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
+      }
     }
     pendingNftUnit = null;
 
