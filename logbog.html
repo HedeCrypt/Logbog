@@ -1127,12 +1127,13 @@ function setWriteNft(policyId) {
 // Modtageren dekrypterer med den tilsvarende secret key udledt fra sin egen Ed25519 pubkey
 async function findTransferKey() {
   try {
-    // Udled vores Curve25519 keypair fra vores egen Ed25519 public key
     const myEd25519PubKey = await getOwnEd25519PubKey();
+    console.log('findTransferKey: myEd25519PubKey', myEd25519PubKey ? b2h(myEd25519PubKey).slice(0,16)+'…' : 'null');
     if (!myEd25519PubKey) return null;
 
     const mySeed    = await sha256(myEd25519PubKey);
     const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(mySeed));
+    console.log('findTransferKey: myPubKey', b2h(myKeyPair.publicKey).slice(0,16)+'…');
 
     for (let page = 1; page <= 10; page++) {
       const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
@@ -1151,6 +1152,7 @@ async function findTransferKey() {
           if (!hexStr) continue;
 
           const privKey = decryptNFTKeyFromTransfer(h2b(hexStr), myKeyPair.secretKey);
+          console.log('findTransferKey: decrypt attempt on', tx.tx_hash.slice(0,12), '→', privKey ? 'SUCCESS' : 'failed');
           if (privKey) return privKey;
         } catch { continue; }
       }
