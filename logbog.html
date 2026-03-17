@@ -795,6 +795,7 @@ function clearNote() {
 function encryptWithNft(text, nftId) {
   const nft = allNfts.find(n => n.policyId === nftId) || allNfts[0];
   if (!nft) throw new Error('No NFT available for encryption.');
+  console.log('[encrypt] with cryptoKey:', b2h(nft.cryptoKey).slice(0,16), 'nft:', nft.tokenName);
   const nonce = nacl.randomBytes(24);
   const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, nft.cryptoKey);
   const out   = new Uint8Array(24+box.length);
@@ -1092,13 +1093,15 @@ async function detectJournalNFT() {
 }
 
 function makeNftEntry(privKey, policyId, tokenName) {
-  return {
+  const entry = {
     policyId,
     tokenName,
     privKey,
     pubKey:    nacl.box.keyPair.fromSecretKey(privKey).publicKey,
     cryptoKey: privKey.slice(0, 32),
   };
+  console.log('[makeNftEntry]', tokenName, 'cryptoKey:', b2h(entry.cryptoKey).slice(0,16));
+  return entry;
 }
 
 function updateNftBadge() {
@@ -1753,6 +1756,7 @@ async function executeTransfer() {
     setTransStatus('Re-encrypting journal key…', 1);
     const recipientCurveKey = await ed25519ToCurve25519(recipientPubKey);
     const reEncrypted = encryptNFTKeyForRecipient(nft.privKey, recipientCurveKey);
+    console.log('[transfer] sending privKey:', b2h(nft.privKey).slice(0,16), 'cryptoKey:', b2h(nft.cryptoKey).slice(0,16));
 
     setTransStatus('Building transfer transaction…', 2);
 
