@@ -919,6 +919,8 @@ async function connectWallet() {
 
     if (nftFound) {
       showScreen('write');
+      // Opdater journal sidebar med noter fra kæden
+      loadEntries().then(() => updateNavEntries()).catch(()=>{});
     } else {
       // Ingen NFT — vis setup skærm
       showScreen('setup');
@@ -1007,7 +1009,6 @@ async function detectJournalNFT() {
         if (!encPrivKeyBytes) continue;
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
-        console.log('detectJournalNFT:', tokenName, 'decryptNFTKey:', privKey ? 'OK' : 'FAILED → pending');
 
         // Udtræk pubKey fra metadata til validering ved transfer-nøgle
         let metaPubKey = null;
@@ -1032,14 +1033,11 @@ async function detectJournalNFT() {
       pendingNftUnit = pending;
       const privKey = await findTransferKey();
       if (privKey) {
-        console.log('pending.pubKey for', pending.tokenName, ':', pending.pubKey ? b2h(pending.pubKey).slice(0,16)+'…' : 'NULL');
         if (pending.pubKey) {
           const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
           const match = b2h(derivedPub) === b2h(pending.pubKey);
-          console.log('Transfer key validation:', pending.tokenName, match ? 'MATCH ✓' : 'MISMATCH ✗', 'derived:', b2h(derivedPub).slice(0,16), 'expected:', b2h(pending.pubKey).slice(0,16));
           if (!match) { continue; }
         } else {
-          console.warn('No pubKey in metadata for', pending.tokenName, '— cannot validate');
         }
         allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
       }
@@ -1047,7 +1045,6 @@ async function detectJournalNFT() {
     pendingNftUnit = null;
 
   } catch(e) {
-    console.warn('detectJournalNFT outer catch:', e.message || e);
   }
 
   if (!allNfts.length) return false;
@@ -1183,12 +1180,10 @@ function setWriteNft(policyId) {
 async function findTransferKey() {
   try {
     const myEd25519PubKey = await getOwnEd25519PubKey();
-    console.log('findTransferKey: myEd25519PubKey', myEd25519PubKey ? b2h(myEd25519PubKey).slice(0,16)+'…' : 'null');
     if (!myEd25519PubKey) return null;
 
     const mySeed    = await sha256(myEd25519PubKey);
     const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(mySeed));
-    console.log('findTransferKey: myPubKey', b2h(myKeyPair.publicKey).slice(0,16)+'…');
 
     for (let page = 1; page <= 10; page++) {
       const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
@@ -1207,7 +1202,6 @@ async function findTransferKey() {
           if (!hexStr) continue;
 
           const privKey = decryptNFTKeyFromTransfer(h2b(hexStr), myKeyPair.secretKey);
-          console.log('findTransferKey: decrypt attempt on', tx.tx_hash.slice(0,12), '→', privKey ? 'SUCCESS' : 'failed');
           if (privKey) return privKey;
         } catch { continue; }
       }
@@ -1793,29 +1787,22 @@ async function executeTransfer() {
 async function fetchWalletPublicKey(addr) {
   try {
     const txs = await bfGet('addresses/'+addr+'/transactions?order=asc&count=20');
-    console.log('fetchWalletPublicKey: found', txs.length, 'txs for', addr.slice(0,20));
     if (!txs.length) return null;
-
     for (const tx of txs) {
       try {
         const utxos = await bfGet('txs/'+tx.tx_hash+'/utxos');
-        const isSpending = utxos.inputs.some(i => i.address === addr);
-        console.log('tx', tx.tx_hash.slice(0,12), 'isSpending:', isSpending);
-        if (!isSpending) continue;
-
+        if (!utxos.inputs.some(i => i.address === addr)) continue;
         const txCbor = await fetch(
           NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
           { headers: { 'project_id': bfKey } }
         ).then(r => r.json());
-        if (!txCbor?.cbor) { console.log('no cbor'); continue; }
-
+        if (!txCbor?.cbor) continue;
         const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
-        console.log('pubKey:', pubKey ? b2h(pubKey).slice(0,16)+'…' : 'null');
         if (pubKey) return pubKey;
-      } catch(e) { console.warn('tx error:', e); continue; }
+      } catch { continue; }
     }
-    return null;
-  } catch(e) { console.warn('fetchWalletPublicKey error:', e); return null; }
+  } catch {}
+  return null;
 }
 
 function extractPubKeyFromTxCbor(txBytes) {
