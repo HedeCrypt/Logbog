@@ -977,6 +977,7 @@ async function detectJournalNFT() {
         if (amt.unit !== 'lovelace') allAssets.push(amt.unit);
       }
     }
+    console.log('[NFT] assets in wallet:', allAssets.length);
 
     for (const unit of allAssets) {
       const policyId     = unit.slice(0, 56);
@@ -1009,6 +1010,7 @@ async function detectJournalNFT() {
         if (!encPrivKeyBytes) continue;
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
+        console.log('[NFT]', tokenName, privKey ? '✓ decrypted' : '→ pending transfer');
 
         // Udtræk pubKey fra metadata til validering ved transfer-nøgle
         let metaPubKey = null;
@@ -1036,15 +1038,17 @@ async function detectJournalNFT() {
         if (pending.pubKey) {
           const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
           const match = b2h(derivedPub) === b2h(pending.pubKey);
+          console.log('[NFT]', pending.tokenName, 'transfer key', match ? '✓ valid' : '✗ mismatch');
           if (!match) { continue; }
-        } else {
         }
         allNfts.push(makeNftEntry(privKey, pending.policyId, pending.tokenName));
       }
     }
     pendingNftUnit = null;
+    console.log('[NFT] total loaded:', allNfts.length, allNfts.map(n=>n.tokenName));
 
   } catch(e) {
+    console.warn('[NFT] detect error:', e.message||e);
   }
 
   if (!allNfts.length) return false;
