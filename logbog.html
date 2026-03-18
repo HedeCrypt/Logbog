@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kæde-logbog</title>
+<title>HedeLog</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
@@ -258,6 +258,7 @@
     <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
       <button onclick="showScreen('write')" id="newNoteBtn" disabled>+ New entry</button>
       <button onclick="showScreen('read')" id="readBtn" disabled>Journal</button>
+      <button onclick="showNewLogbookScreen()" id="newLogbookBtn" disabled style="opacity:.7">+ New journal key</button>
       <button onclick="showScreen('transfer')" id="transferNavBtn" disabled style="border-color:rgba(224,90,74,.3);color:var(--danger);opacity:.6">Transfer journal</button>
       <button class="ghost" onclick="openSettings()" id="settingsBtn" style="display:flex;align-items:center;gap:6px;justify-content:center;opacity:.6">
         <span style="font-size:13px">⚙</span> Settings
@@ -301,7 +302,7 @@
         </div>
         <textarea id="noteText" placeholder="Write your entry…" oninput="updateCharCount()"></textarea>
         <div class="write-toolbar">
-          <button class="primary" onclick="addDraft()">Gem lokalt</button>
+          <button class="primary" onclick="addDraft()">Save on device</button>
           <button class="ghost" onclick="clearNote()">Clear</button>
           <span id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;opacity:.6" onclick="showNftSelector()"></span>
           <span class="char-count" id="charCount">0 chars</span>
@@ -354,11 +355,11 @@
           <div class="nft-card-title">NFT details</div>
           <div class="nft-field">
             <label>Token name</label>
-            <input type="text" id="mintTokenName" value="LogKey" maxlength="32" spellcheck="false" placeholder="LogKey">
+            <input type="text" id="mintTokenName" value="LogKey" maxlength="32" spellcheck="false" placeholder="LogKey" onkeydown="if(event.key==='Enter')document.getElementById('mintBtn').click()">
           </div>
           <div class="nft-field">
             <label>Display name (optional)</label>
-            <input type="text" id="mintDisplayName" value="Journal Key" maxlength="64" spellcheck="false" placeholder="Journal Key">
+            <input type="text" id="mintDisplayName" value="Journal Key" maxlength="64" spellcheck="false" placeholder="Journal Key" onkeydown="if(event.key==='Enter')document.getElementById('mintBtn').click()">
           </div>
         </div>
 
@@ -395,7 +396,7 @@
         <div class="nft-card" style="margin-bottom:1.25rem">
           <div class="nft-card-title">Recipient wallet address</div>
           <div class="nft-field" style="margin-bottom:8px">
-            <input type="text" id="transferAddr" placeholder="addr1… or addr_test1…" spellcheck="false" autocomplete="off" style="font-size:11px">
+            <input type="text" id="transferAddr" placeholder="addr1… or addr_test1…" spellcheck="false" autocomplete="off" style="font-size:11px" onkeydown="if(event.key==='Enter')executeTransfer()">
           </div>
           <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.6;line-height:1.6">
             ⚠ The recipient must have made at least one outgoing transaction on-chain before the transfer. This is required to derive their public key for encryption.
@@ -469,7 +470,7 @@
     </div>
     <div class="settings-field">
       <label id="settingsBfLabel">Blockfrost API key (mainnet)</label>
-      <input type="text" id="settingsBfKey" placeholder="mainnetXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" spellcheck="false" autocomplete="off">
+      <input type="text" id="settingsBfKey" placeholder="mainnetXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" spellcheck="false" autocomplete="off" onkeydown="if(event.key==='Enter')saveSettings()">
     </div>
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;margin-bottom:1.25rem;line-height:1.7">
       Get a free key at <a href="https://blockfrost.io" target="_blank" style="color:var(--accent);text-decoration:none">blockfrost.io</a> — create a project matching the network above.
@@ -718,6 +719,18 @@ function resetLockTimer() {
   lockTimer = setTimeout(lockSession, LOCK_TIMEOUT_MS);
 }
 
+function showNewLogbookScreen() {
+  // Nulstil mint-felter og vis setup-skærm
+  const nameEl = document.getElementById('mintTokenName');
+  const dispEl = document.getElementById('mintDisplayName');
+  if (nameEl) nameEl.value = '';
+  if (dispEl) dispEl.value = '';
+  document.getElementById('mintStatus').style.display = 'none';
+  document.getElementById('mintErr').style.display = 'none';
+  document.getElementById('mintBtn').disabled = false;
+  showScreen('setup');
+}
+
 function logout() {
   secureVault.clear();
   bfKey = '';
@@ -733,6 +746,7 @@ function logout() {
   document.getElementById('nftBadge').style.display = 'none';
   document.getElementById('newNoteBtn').disabled = true;
   document.getElementById('readBtn').disabled = true;
+  document.getElementById('newLogbookBtn').disabled = true;
   document.getElementById('transferNavBtn').disabled = true;
   document.getElementById('connectBtn').disabled = false;
   document.getElementById('connectBtn').textContent = 'Connect Eternl';
@@ -795,7 +809,6 @@ function clearNote() {
 function encryptWithNft(text, nftId) {
   const nft = allNfts.find(n => n.policyId === nftId) || allNfts[0];
   if (!nft) throw new Error('No NFT available for encryption.');
-  console.log('[encrypt] with cryptoKey:', b2h(nft.cryptoKey).slice(0,16), 'nft:', nft.tokenName);
   const nonce = nacl.randomBytes(24);
   const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, nft.cryptoKey);
   const out   = new Uint8Array(24+box.length);
@@ -827,10 +840,7 @@ function decryptHexMulti(hex) {
   }
 
   if (allNfts.length > 0) {
-    console.log('[decrypt] failed — allNfts keys:', allNfts.map(n => b2h(n.cryptoKey).slice(0,12)));
-    console.log('[decrypt] encHex length:', hex.length, 'first 20:', hex.slice(0,20));
   } else {
-    console.log('[decrypt] failed — allNfts is EMPTY at time of decrypt');
   }
   return null;
 }
@@ -915,6 +925,7 @@ async function connectWallet() {
 
     document.getElementById('newNoteBtn').disabled = false;
     document.getElementById('readBtn').disabled = false;
+    document.getElementById('newLogbookBtn').disabled = false;
     document.getElementById('transferNavBtn').disabled = false;
 
     loadLocalStorage();
@@ -981,7 +992,6 @@ async function detectJournalNFT() {
         if (amt.unit !== 'lovelace') allAssets.push(amt.unit);
       }
     }
-    console.log('[NFT] assets in wallet:', allAssets.length);
 
     for (const unit of allAssets) {
       const policyId     = unit.slice(0, 56);
@@ -1014,7 +1024,6 @@ async function detectJournalNFT() {
         if (!encPrivKeyBytes) continue;
 
         const privKey = decryptNFTKey(encPrivKeyBytes);
-        console.log('[NFT]', tokenName, privKey ? '✓ decrypted' : '→ pending transfer');
 
         // Udtræk pubKey fra metadata til validering ved transfer-nøgle
         let metaPubKey = null;
@@ -1039,7 +1048,6 @@ async function detectJournalNFT() {
     let transferCandidates = null;
     if (pendingUnits.length > 0) {
       transferCandidates = await findTransferKey();
-      console.log('[NFT] transfer candidates found:', transferCandidates.length);
     }
 
     for (const pending of pendingUnits) {
@@ -1048,7 +1056,6 @@ async function detectJournalNFT() {
         if (pending.pubKey) {
           const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
           const match = b2h(derivedPub) === b2h(pending.pubKey);
-          console.log('[NFT]', pending.tokenName, 'transfer key', match ? '✓ valid' : '✗ mismatch');
           if (match) { matched = privKey; break; }
         } else {
           matched = privKey; break;
@@ -1057,10 +1064,8 @@ async function detectJournalNFT() {
       if (matched) allNfts.push(makeNftEntry(matched, pending.policyId, pending.tokenName));
     }
     pendingNftUnit = null;
-    console.log('[NFT] total loaded:', allNfts.length, allNfts.map(n=>n.tokenName));
 
   } catch(e) {
-    console.warn('[NFT] detect error:', e.message||e);
   }
 
   if (!allNfts.length) return false;
@@ -1100,7 +1105,6 @@ function makeNftEntry(privKey, policyId, tokenName) {
     pubKey:    nacl.box.keyPair.fromSecretKey(privKey).publicKey,
     cryptoKey: privKey.slice(0, 32),
   };
-  console.log('[makeNftEntry]', tokenName, 'cryptoKey:', b2h(entry.cryptoKey).slice(0,16));
   return entry;
 }
 
@@ -1756,7 +1760,6 @@ async function executeTransfer() {
     setTransStatus('Re-encrypting journal key…', 1);
     const recipientCurveKey = await ed25519ToCurve25519(recipientPubKey);
     const reEncrypted = encryptNFTKeyForRecipient(nft.privKey, recipientCurveKey);
-    console.log('[transfer] sending privKey:', b2h(nft.privKey).slice(0,16), 'cryptoKey:', b2h(nft.cryptoKey).slice(0,16));
 
     setTransStatus('Building transfer transaction…', 2);
 
@@ -1783,12 +1786,16 @@ async function executeTransfer() {
     activeNftIds.delete(nft.policyId);
     if (writeNftId === nft.policyId) writeNftId = allNfts[0]?.policyId || null;
 
-    // Ryd lokal cache for denne wallet
+    // Ryd lokal cache og sidebar for denne wallet
     try {
       const cacheKey = selectedNetwork+'_'+walletAddr;
       localStorage.removeItem('kl_entries_'+cacheKey);
       localStorage.removeItem('kl_drafts_'+cacheKey);
     } catch {}
+    savedEntries = [];
+    drafts = [];
+    updateNavEntries();
+    renderDraftList();
 
     document.getElementById('transferTxHash').textContent = txHash;
     document.getElementById('transferExplorerLink').href = NETWORKS[selectedNetwork].explorerTx + txHash;
@@ -2559,7 +2566,6 @@ async function loadEntries() {
               if (hexStr) {
                 const addrPrefix = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
                 const fromAddr = hexAddrToBech32(hexStr, addrPrefix);
-                console.log('[loadEntries] found from addr:', fromAddr.slice(0,20));
                 searchAddrs.add(fromAddr);
               }
             }
@@ -2569,7 +2575,6 @@ async function loadEntries() {
       }
     } catch {}
 
-    console.log('[loadEntries] searching', searchAddrs.size, 'addresses:', [...searchAddrs].map(a=>a.slice(0,20)));
 
     const found = [];
     const seenTx = new Set();
@@ -2602,7 +2607,6 @@ async function loadEntries() {
               }).join('');
               if (!encHex) return;
               const result = decryptHexMulti(encHex);
-              console.log('[entries] tx', tx.tx_hash.slice(0,8), 'note', idx, result ? '✓ '+result.nftId?.slice(0,8) : '✗ failed');
               if (!result) return;
               found.push({
                 text: result.text, encHex,
