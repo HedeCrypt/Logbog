@@ -1858,9 +1858,10 @@ async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reE
 
   const minUtxoAda = 1500000n;
 
-  // Metadata med re-krypteret nøgle (label 1338) + afsender-adresse
+  // Metadata med re-krypteret nøgle (label 1338) + afsender-adresse som bytes
   const reEncChunks = chunkBytes(reEncryptedKey, 64);
-  const transferMeta = { transfer: 1, encPrivKey: reEncChunks, from: walletAddr };
+  const fromBytes   = h2b(bech32ToHex(walletAddr));
+  const transferMeta = { transfer: 1, encPrivKey: reEncChunks, from: chunkBytes(fromBytes, 64) };
   const auxMetaValue  = encodeCborValue(transferMeta);
   const auxDataBytes  = encodeCborMap([[cborUint(1338), auxMetaValue]]);
   const auxHash       = await blake2b256(auxDataBytes);
@@ -2550,10 +2551,17 @@ async function loadEntries() {
             const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
             const m = metas.find(m => parseInt(m.label) === 1338);
             if (m?.json_metadata?.from) {
-              console.log('[loadEntries] found from addr:', m.json_metadata.from.slice(0,20));
-              searchAddrs.add(m.json_metadata.from);
-            } else if (m) {
-              console.log('[loadEntries] label 1338 found but no from field:', JSON.stringify(m.json_metadata).slice(0,80));
+              // from er gemt som array af Uint8Array chunks
+              const raw = m.json_metadata.from;
+              const hexStr = Array.isArray(raw)
+                ? raw.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+                : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
+              if (hexStr) {
+                const addrPrefix = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
+                const fromAddr = hexAddrToBech32(hexStr, addrPrefix);
+                console.log('[loadEntries] found from addr:', fromAddr.slice(0,20));
+                searchAddrs.add(fromAddr);
+              }
             }
           } catch { continue; }
         }
