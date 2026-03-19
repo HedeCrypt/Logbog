@@ -22,8 +22,10 @@
   html,body{background:var(--bg);color:var(--text);font-family:var(--serif);min-height:100vh}
   body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")}
-  .shell{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;position:relative;z-index:1}
-  .sidebar{border-right:1px solid var(--border);padding:1.5rem 1.25rem;display:flex;flex-direction:column;gap:1.5rem;position:sticky;top:0;height:100vh;overflow:hidden;background:var(--surface)}
+  /* Centrer shell på skærmen */
+  body{display:flex;justify-content:center}
+  .shell{width:100%;max-width:1100px;min-height:100vh}
+  .sidebar{border-right:1px solid var(--border);padding:1.5rem 1.25rem;display:flex;flex-direction:column;gap:1.25rem;position:sticky;top:0;height:100vh;overflow:hidden;background:var(--surface)}
   .sidebar::-webkit-scrollbar{display:none}
   .main{padding:3rem 3.5rem 6rem;max-width:740px}
   .logo{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
@@ -184,6 +186,7 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   .page-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2rem;gap:8px;padding-bottom:1rem;border-bottom:1px solid var(--border)}
   h2.read-title{font-size:1.4rem;font-weight:500;font-style:italic;letter-spacing:-.01em}
+  .shell{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;position:relative;z-index:1}
   @media(max-width:700px){.shell{grid-template-columns:1fr}.sidebar{display:none}.main{padding:1.5rem 1.25rem 4rem}.write-daynum{display:none}}
   .settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
   .settings-overlay.open{display:flex}
@@ -222,26 +225,30 @@
       <div id="networkBadge" style="display:none;margin-top:8px"></div>
       <div id="nftBadge" style="display:none"></div>
     </div>
-    <div id="sidebarDraftSec" style="display:none">
-      <div class="sec-lbl">Drafts (<span id="sidebarDraftCnt">0</span>)</div>
-      <div class="draft-queue" id="sidebarDraftQ"></div>
-      <button class="primary" style="width:100%;margin-top:8px" onclick="showScreen('write')">Send to chain</button>
+
+    <!-- Journal keys selector — inline i sidebar -->
+    <div id="journalKeysSec" style="display:none">
+      <div class="sec-lbl">Journal keys</div>
+      <div id="sidebarNftList" style="display:flex;flex-direction:column;gap:3px"></div>
     </div>
+
+    <!-- Kladder i sidebar -->
+    <div id="sidebarDraftSec" style="display:none">
+      <div class="sec-lbl">Unsent (<span id="sidebarDraftCnt">0</span>)</div>
+      <div class="draft-queue" id="sidebarDraftQ"></div>
+    </div>
+
     <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-      <div class="sec-lbl">Journal</div>
+      <div class="sec-lbl">Entries</div>
       <div class="nav-entries" id="navEntries" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent">
         <div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>
       </div>
     </div>
-    <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px">
       <button onclick="showScreen('write')" id="newNoteBtn" disabled>+ New entry</button>
-      <button onclick="showScreen('read')" id="readBtn" disabled>Journal</button>
-      <button onclick="showNewLogbookScreen()" id="newLogbookBtn" disabled style="opacity:.7">+ New journal key</button>
-      <button onclick="showScreen('transfer')" id="transferNavBtn" disabled style="border-color:rgba(224,90,74,.3);color:var(--danger);opacity:.6">Transfer journal</button>
-      <button class="ghost" onclick="openSettings()" id="settingsBtn" style="display:flex;align-items:center;gap:6px;justify-content:center;opacity:.6">
-        <span style="font-size:13px">⚙</span> Settings
-      </button>
-      <button class="ghost" id="logoutBtn" onclick="logout()" style="display:none;opacity:.4;font-size:11px">Sign out</button>
+      <button class="ghost" onclick="openSettings()" id="settingsBtn" style="opacity:.6">⚙ Settings</button>
+      <button class="ghost" id="logoutBtn" onclick="logout()" style="display:none;opacity:.4;font-size:10px">Sign out</button>
     </div>
   </aside>
 
@@ -463,6 +470,13 @@
     <button class="primary settings-save" onclick="saveSettings()">Save</button>
     <div class="err-box" id="settingsErr" style="margin-top:.75rem;margin-bottom:0"></div>
     <div id="settingsOk" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:.75rem;display:none;text-align:center;opacity:.8">Saved ✓</div>
+
+    <!-- Journal management -->
+    <div id="settingsJournalActions" style="display:none;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Journal keys</div>
+      <button onclick="closeSettings();showNewLogbookScreen()" id="settingsNewKeyBtn">+ New journal key</button>
+      <button onclick="closeSettings();showScreen('transfer')" id="settingsTransferBtn" style="border-color:rgba(192,84,58,.3);color:var(--danger)">Transfer journal</button>
+    </div>
   </div>
 </div>
 
@@ -730,9 +744,6 @@ function logout() {
   document.getElementById('networkBadge').style.display = 'none';
   document.getElementById('nftBadge').style.display = 'none';
   document.getElementById('newNoteBtn').disabled = true;
-  document.getElementById('readBtn').disabled = true;
-  document.getElementById('newLogbookBtn').disabled = true;
-  document.getElementById('transferNavBtn').disabled = true;
   document.getElementById('connectBtn').disabled = false;
   document.getElementById('connectBtn').textContent = 'Connect Eternl';
   showScreen('connect');
@@ -909,13 +920,11 @@ async function connectWallet() {
     const nftFound = await detectJournalNFT();
 
     document.getElementById('newNoteBtn').disabled = false;
-    document.getElementById('readBtn').disabled = false;
-    document.getElementById('newLogbookBtn').disabled = false;
-    document.getElementById('transferNavBtn').disabled = false;
 
     loadLocalStorage();
     resetLockTimer();
     document.getElementById('logoutBtn').style.display = 'block';
+    document.getElementById('settingsJournalActions').style.display = 'flex';
 
     if (nftFound) {
       showScreen('write');
@@ -1096,13 +1105,30 @@ function makeNftEntry(privKey, policyId, tokenName) {
 function updateNftBadge() {
   const badge = document.getElementById('nftBadge');
   if (!allNfts.length) { badge.style.display='none'; return; }
-  const activeNames = allNfts
-    .filter(n => activeNftIds.has(n.policyId))
-    .map(n => n.tokenName);
+  const activeNames = allNfts.filter(n => activeNftIds.has(n.policyId)).map(n => n.tokenName);
   badge.textContent = '⬡ ' + (activeNames.length === 1 ? activeNames[0] : activeNames.length+' journals');
   badge.style.display = 'block';
   badge.style.cursor = allNfts.length > 1 ? 'pointer' : 'default';
   badge.onclick = allNfts.length > 1 ? showNftSelector : null;
+  renderSidebarNftList();
+}
+
+function renderSidebarNftList() {
+  const sec = document.getElementById('journalKeysSec');
+  const list = document.getElementById('sidebarNftList');
+  if (allNfts.length <= 1) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  list.innerHTML = allNfts.map(nft => {
+    const isActive = activeNftIds.has(nft.policyId);
+    const isWrite  = writeNftId === nft.policyId;
+    return `<div style="display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;border:1px solid ${isWrite?'rgba(200,150,90,.3)':'transparent'};background:${isWrite?'var(--accent-dim)':'transparent'};cursor:pointer;transition:all .12s"
+      onclick="setWriteNft('${nft.policyId}')">
+      <input type="checkbox" ${isActive?'checked':''} style="accent-color:var(--accent);cursor:pointer;flex-shrink:0;width:12px;height:12px"
+        onclick="event.stopPropagation();toggleNftActive('${nft.policyId}', this.checked)">
+      <span style="font-family:var(--mono);font-size:10px;color:${isWrite?'var(--accent)':'var(--muted)'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⬡ ${esc(nft.tokenName)}</span>
+      ${isWrite?'<span style="font-family:var(--mono);font-size:8px;color:var(--accent);opacity:.6">writing</span>':''}
+    </div>`;
+  }).join('');
 }
 
 function saveNftSelection() {
@@ -1123,7 +1149,7 @@ function loadNftSelection() {
 
 function showNftSelector() {
   const overlay = document.getElementById('nftSelectorOverlay');
-  renderNftSelector();
+  renderSidebarNftList();
   overlay.classList.add('open');
 }
 
@@ -1163,7 +1189,7 @@ function toggleNftActive(policyId, checked) {
   }
   saveNftSelection();
   updateNftBadge();
-  renderNftSelector();
+  renderSidebarNftList();
 }
 
 function setWriteNft(policyId) {
@@ -1176,7 +1202,7 @@ function setWriteNft(policyId) {
   nftAssetName = nft?.tokenName || '';
   saveNftSelection();
   updateNftBadge();
-  renderNftSelector();
+  renderSidebarNftList();
   // Genrender kladder da NFT-valg kan være ændret
   renderDraftList();
 }
@@ -2709,58 +2735,62 @@ const NAV_PAGE_SIZE = 50;
 function updateNavEntries() {
   navPage = 0;
   const el = document.getElementById('navEntries');
-  if (!savedEntries.length) {
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+  const allEntries = [...draftEntries, ...savedEntries];
+  if (!allEntries.length) {
     el.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>';
     return;
   }
-  renderNavPage(el, true);
-
-  // Sæt scroll-listener for at loade mere
+  renderNavPage(el, true, allEntries);
   el.onscroll = () => {
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
-      const total = savedEntries.length;
-      if ((navPage + 1) * NAV_PAGE_SIZE < total) {
+      if ((navPage + 1) * NAV_PAGE_SIZE < allEntries.length) {
         navPage++;
-        renderNavPage(el, false);
+        renderNavPage(el, false, allEntries);
       }
     }
   };
 }
 
-function renderNavPage(el, reset) {
+function renderNavPage(el, reset, allEntries) {
+  if (!allEntries) {
+    allEntries = [...drafts.map(d=>({...d,isDraft:true})), ...savedEntries];
+  }
   const start = navPage * NAV_PAGE_SIZE;
-  const slice = savedEntries.slice(start, start + NAV_PAGE_SIZE);
-
-  // Fjern evt. eksisterende load-more sentinel
+  const slice = allEntries.slice(start, start + NAV_PAGE_SIZE);
   const sentinel = el.querySelector('.nav-sentinel');
   if (sentinel) sentinel.remove();
 
   const html = slice.map((e, i) => {
     const idx = start + i;
     const date = new Date(e.time).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
-    return `<div class="nav-entry" onclick="jumpToEntry(${idx})">
-      <div class="nav-entry-date">${date}</div>
+    const dot = e.isDraft
+      ? `<span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--accent);opacity:.6;margin-left:5px;vertical-align:middle"></span>`
+      : '';
+    return `<div class="nav-entry" onclick="jumpToEntry(${idx},${e.isDraft||false})">
+      <div class="nav-entry-date">${date}${dot}</div>
       <div class="nav-entry-preview">${esc(e.text.slice(0,52))}</div>
     </div>`;
   }).join('');
 
-  if (reset) {
-    el.innerHTML = html;
-  } else {
-    el.insertAdjacentHTML('beforeend', html);
-  }
-
-  // Tilføj sentinel hvis der er mere
-  if ((navPage + 1) * NAV_PAGE_SIZE < savedEntries.length) {
+  if (reset) { el.innerHTML = html; } else { el.insertAdjacentHTML('beforeend', html); }
+  if ((navPage + 1) * NAV_PAGE_SIZE < allEntries.length) {
     el.insertAdjacentHTML('beforeend', '<div class="nav-sentinel" style="height:1px"></div>');
   }
 }
 
-function jumpToEntry(idx) {
+function jumpToEntry(idx, isDraft) {
+  if (isDraft) {
+    showScreen('write');
+    setTimeout(() => {
+      const card = document.getElementById('draftsList')?.children[idx - (savedEntries.length ? 0 : 0)];
+    }, 100);
+    return;
+  }
   showScreen('read');
-  // Vent på at read-skærmen er synlig, scroll til entry
   setTimeout(() => {
-    const card = document.getElementById('ec'+idx);
+    const realIdx = idx - drafts.length;
+    const card = document.getElementById('ec'+realIdx);
     if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
   }, 100);
 }
