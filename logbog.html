@@ -736,6 +736,7 @@ function logout() {
   walletApi = null; walletAddr = null; stakeAddr = null;
   allNfts = []; activeNftIds = new Set(); writeNftId = null;
   drafts = []; savedEntries = [];
+  _cachedOwnEd25519PubKey = null;
   clearTimeout(lockTimer);
   document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('walletDot').classList.remove('on');
@@ -1206,10 +1207,9 @@ function setWriteNft(policyId) {
   // Genrender kladder da NFT-valg kan være ændret
   renderDraftList();
 }
-// Søg efter transfer-transaktion (label 1338) til denne wallet
-// Afsenderen krypterede med: ed25519ToCurve25519(modtagerens Ed25519 pubkey)
-// Det svarer til: nacl.box.keyPair.fromSecretKey(clampCurve25519(SHA256(ed25519Pubkey))).publicKey
-// Modtageren dekrypterer med den tilsvarende secret key udledt fra sin egen Ed25519 pubkey
+// Cache for vores egen Ed25519 public key — ændrer sig aldrig per session
+let _cachedOwnEd25519PubKey = null;
+
 async function findTransferKey() {
   const candidates = [];
   try {
@@ -1219,17 +1219,18 @@ async function findTransferKey() {
     const mySeed    = await sha256(myEd25519PubKey);
     const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(mySeed));
 
+    // Brug Blockfrost metadata-endpoint — søg kun på label 1338 direkte
+    // i stedet for at hente metadata for alle transaktioner
     for (let page = 1; page <= 10; page++) {
-      const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
-      if (!txs.length) break;
+      const metaTxs = await bfGet('metadata/txs/labels/1338?order=desc&count=100&page='+page);
+      if (!metaTxs.length) break;
 
-      for (const tx of txs) {
+      for (const item of metaTxs) {
         try {
-          const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
-          const m = metas.find(m => parseInt(m.label) === 1338);
-          if (!m?.json_metadata?.encPrivKey) continue;
+          const m = item.json_metadata;
+          if (!m?.encPrivKey) continue;
 
-          const raw = m.json_metadata.encPrivKey;
+          const raw = m.encPrivKey;
           const hexStr = Array.isArray(raw)
             ? raw.map(c => (typeof c==='string' ? c : c?.bytes||'').replace(/^0x/i,'')).join('')
             : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
@@ -1239,7 +1240,7 @@ async function findTransferKey() {
           if (privKey) candidates.push(privKey);
         } catch { continue; }
       }
-      if (txs.length < 50) break;
+      if (metaTxs.length < 100) break;
     }
   } catch {}
   return candidates;
@@ -1247,6 +1248,7 @@ async function findTransferKey() {
 
 // Hent vores egen Ed25519 public key fra kæden (fra vores egne udgående txs)
 async function getOwnEd25519PubKey() {
+  if (_cachedOwnEd25519PubKey) return _cachedOwnEd25519PubKey;
   try {
     const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=asc&count=20');
     for (const tx of txs) {
@@ -1259,7 +1261,7 @@ async function getOwnEd25519PubKey() {
         ).then(r => r.json());
         if (!txCbor?.cbor) continue;
         const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
-        if (pubKey) return pubKey;
+        if (pubKey) { _cachedOwnEd25519PubKey = pubKey; return pubKey; }
       } catch { continue; }
     }
   } catch {}
@@ -2556,34 +2558,41 @@ async function loadEntries() {
 
   try {
     // Byg liste af adresser der skal søges på
-    // Start med vores egen adresse
     const searchAddrs = new Set([walletAddr]);
 
-    // Find afsender-adresser fra transfer-transaktioner (label 1338 med "from" felt)
+    // Hent cachede from-adresser fra localStorage
+    const cacheKey = 'kl_fromaddrs_'+selectedNetwork+'_'+walletAddr;
     try {
-      for (let page = 1; page <= 5; page++) {
-        const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=50&page='+page);
-        if (!txs.length) break;
-        for (const tx of txs) {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+      cached.forEach(a => searchAddrs.add(a));
+    } catch {}
+
+    // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
+    try {
+      for (let page = 1; page <= 3; page++) {
+        const items = await bfGet('metadata/txs/labels/1338?order=desc&count=100&page='+page);
+        if (!items.length) break;
+        let found = false;
+        for (const item of items) {
           try {
-            const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
-            const m = metas.find(m => parseInt(m.label) === 1338);
-            if (m?.json_metadata?.from) {
-              // from er gemt som array af Uint8Array chunks
-              const raw = m.json_metadata.from;
-              const hexStr = Array.isArray(raw)
-                ? raw.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
-                : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
-              if (hexStr) {
-                const addrPrefix = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
-                const fromAddr = hexAddrToBech32(hexStr, addrPrefix);
-                searchAddrs.add(fromAddr);
-              }
+            const m = item.json_metadata;
+            if (!m?.from) continue;
+            const raw = m.from;
+            const hexStr = Array.isArray(raw)
+              ? raw.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+              : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
+            if (hexStr) {
+              const addrPrefix = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
+              const fromAddr = hexAddrToBech32(hexStr, addrPrefix);
+              searchAddrs.add(fromAddr);
+              found = true;
             }
           } catch { continue; }
         }
-        if (txs.length < 50) break;
+        if (items.length < 100) break;
       }
+      // Gem opdaterede from-adresser
+      try { localStorage.setItem(cacheKey, JSON.stringify([...searchAddrs].filter(a => a !== walletAddr))); } catch {}
     } catch {}
 
 
