@@ -178,6 +178,18 @@
   .nft-sel-write-btn{font-family:var(--mono);font-size:9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--faint);padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .12s}
   .nft-sel-write-btn:hover{border-color:var(--accent);color:var(--accent)}
   .nft-sel-write-btn.active{background:var(--accent-dim);border-color:rgba(200,150,90,.3);color:var(--accent)}
+  /* ── Combined journal section ── */
+  .journal-section{margin-top:2.5rem;border-top:1px solid var(--border);padding-top:1.5rem}
+  .journal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;gap:12px;flex-wrap:wrap}
+  .journal-header-title{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+  .send-bar-inline{display:flex;align-items:center;gap:10px}
+  .send-bar-label{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .send-chain-btn{padding:6px 14px;font-size:10px}
+  .size-indicator-mini{width:40px;height:2px;background:var(--border);border-radius:1px;overflow:hidden;flex-shrink:0}
+  .size-bar-mini{height:100%;background:var(--accent);border-radius:1px;transition:width .3s}
+  .unsent-badge{font-family:var(--mono);font-size:8px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(200,150,90,.2);border-radius:3px;padding:1px 6px;margin-left:6px;letter-spacing:.04em}
+  .entry-unsent{border-left:2px solid rgba(200,150,90,.2);padding-left:.75rem}
+  .entry-unsent:hover::before{opacity:0}
   .lock-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem}
   .lock-overlay.show{display:flex}
   .lock-icon{font-size:2rem;opacity:.15}
@@ -284,43 +296,24 @@
       </div>
     </div>
 
-    <!-- WRITE -->
+    <!-- JOURNAL (write + entries combined) -->
     <div class="screen" id="screenWrite">
       <div style="position:relative">
         <div class="write-top">
           <div class="write-date" id="writeDate"></div>
+          <div class="search-wrap" style="max-width:200px">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="searchInput" placeholder="Search…" oninput="filterEntries()" autocomplete="off" spellcheck="false">
+          </div>
         </div>
         <div class="write-page">
-        <textarea id="noteText" placeholder="Write your entry…" oninput="updateCharCount()"></textarea>
+          <textarea id="noteText" placeholder="Write your entry…" oninput="updateCharCount()"></textarea>
         </div>
         <div class="write-toolbar">
           <button class="primary" onclick="addDraft()">Save on device</button>
           <button class="ghost" onclick="clearNote()">Clear</button>
           <span id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;opacity:.6" onclick="showNftSelector()"></span>
           <span class="char-count" id="charCount">0 chars</span>
-        </div>
-      </div>
-      <div class="drafts-section" id="draftsSection" style="display:none">
-        <div class="drafts-header">
-          <span class="drafts-title">Drafts</span>
-          <span class="drafts-count-badge" id="draftsCountBadge">0</span>
-        </div>
-        <div id="draftsList"></div>
-        <div class="send-bar">
-          <div class="send-bar-info">
-            <div class="send-bar-count" id="sendBarCount">0 entries</div>
-            <div class="send-bar-sub" id="sendBarSub">packed into one transaction · ~0.17 ADA fee</div>
-            <div class="size-bar-wrap">
-              <div class="size-bar-label">
-                <span>Transaction size</span>
-                <span id="sizeLabel">0 / ~14 KB</span>
-              </div>
-              <div class="size-bar-track">
-                <div class="size-bar-fill" id="sizeBarFill" style="width:0%"></div>
-              </div>
-            </div>
-          </div>
-          <button class="primary" onclick="sendBatch()" id="sendBatchBtn">Send to chain</button>
         </div>
         <div class="status-line" id="statusLine"></div>
         <div class="tx-confirm" id="txConfirm">
@@ -334,6 +327,22 @@
           </div>
           <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;opacity:.5">Confirmation in ~20-60 sec · data is permanent on-chain</div>
         </div>
+      </div>
+
+      <!-- Combined journal: unsent + on-chain entries -->
+      <div class="journal-section" id="journalSection">
+        <div class="journal-header">
+          <span class="journal-header-title" id="entryCount"></span>
+          <!-- Send bar — vises kun når der er usent indhold -->
+          <div class="send-bar-inline" id="sendBarInline" style="display:none">
+            <div class="size-indicator-mini">
+              <div class="size-bar-mini" id="sizeBarFill" style="width:0%"></div>
+            </div>
+            <span class="send-bar-label" id="sendBarCount"></span>
+            <button class="primary send-chain-btn" onclick="sendBatch()" id="sendBatchBtn">Send to chain</button>
+          </div>
+        </div>
+        <div class="entries-wrap" id="entriesList"></div>
       </div>
     </div>
 
@@ -412,17 +421,6 @@
         </div>
         <button class="primary" onclick="executeTransfer()" id="transferBtn">Transfer journal</button>
       </div>
-    </div>
-    <div class="screen" id="screenRead">
-      <div class="read-top">
-        <h2 class="read-title">Journal</h2>
-        <div class="search-wrap">
-          <span class="search-icon">⌕</span>
-          <input type="text" id="searchInput" placeholder="Search entries…" oninput="filterEntries()" autocomplete="off" spellcheck="false">
-        </div>
-        <span class="entry-count-lbl" id="entryCount"></span>
-      </div>
-      <div class="entries-wrap" id="entriesList"></div>
     </div>
 
   </main>
@@ -764,13 +762,14 @@ function lockSession() {
 
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById('screen'+name[0].toUpperCase()+name.slice(1)).classList.add('active');
-  if (name==='write') {
+  // read er fusioneret med write
+  const screenName = name === 'read' ? 'write' : name;
+  document.getElementById('screen'+screenName[0].toUpperCase()+screenName.slice(1)).classList.add('active');
+  if (screenName==='write') {
     const now = new Date();
     document.getElementById('writeDate').textContent = now.toLocaleDateString('da-DK',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-    renderDraftList();
+    renderCombinedJournal();
   }
-  if (name==='read') loadEntries();
   if (name==='transfer') {
     renderTransferNftList();
     document.getElementById('transferConfirm').classList.remove('show');
@@ -1205,7 +1204,7 @@ function setWriteNft(policyId) {
   updateNftBadge();
   renderSidebarNftList();
   // Genrender kladder da NFT-valg kan være ændret
-  renderDraftList();
+  renderCombinedJournal();
 }
 // Cache for vores egen Ed25519 public key — ændrer sig aldrig per session
 let _cachedOwnEd25519PubKey = null;
@@ -1808,7 +1807,7 @@ async function executeTransfer() {
     savedEntries = [];
     drafts = [];
     updateNavEntries();
-    renderDraftList();
+    renderCombinedJournal();
 
     document.getElementById('transferTxHash').textContent = txHash;
     document.getElementById('transferExplorerLink').href = NETWORKS[selectedNetwork].explorerTx + txHash;
@@ -1999,33 +1998,25 @@ function addDraft() {
   drafts.push({ text, encHex: encryptWithNft(text, nftId), nftId, time: new Date().toISOString() });
   saveLocalStorage();
   clearNote();
-  renderDraftList();
-  updateSidebarDrafts();
-  document.getElementById('draftsSection').style.display = 'block';
+  updateNavEntries();
+  renderCombinedJournal();
 }
 
 function removeDraft(i) {
   drafts.splice(i,1);
   saveLocalStorage();
-  renderDraftList();
-  updateSidebarDrafts();
-  if (!drafts.length) document.getElementById('draftsSection').style.display='none';
+  updateNavEntries();
+  renderCombinedJournal();
 }
 
 function toggleDraftEnc(i) {
   document.getElementById('draftEnc'+i).classList.toggle('show');
 }
 
-function renderDraftList() {
-  const el = document.getElementById('draftsList');
-  if (!drafts.length) { document.getElementById('draftsSection').style.display='none'; el.innerHTML=''; return; }
-  document.getElementById('draftsSection').style.display='block';
-  const n = drafts.length;
-  document.getElementById('sendBarCount').textContent = n+(n===1?' entry':' entries');
-  document.getElementById('draftsCountBadge').textContent = n;
-
-  // Opdater write NFT indikator
+// Opdater write NFT indikator
+function updateWriteNftIndicator() {
   const indicator = document.getElementById('writeNftIndicator');
+  if (!indicator) return;
   if (allNfts.length > 1 && writeNftId) {
     const nft = allNfts.find(n => n.policyId === writeNftId);
     indicator.textContent = '⬡ '+esc(nft?.tokenName||'') + ' ▾';
@@ -2033,58 +2024,11 @@ function renderDraftList() {
   } else {
     indicator.style.display = 'none';
   }
-
-  el.innerHTML = drafts.map((d,i) => {
-    const nftName = allNfts.length > 1
-      ? `<span style="font-family:var(--mono);font-size:9px;color:var(--accent);opacity:.7;margin-left:6px">⬡ ${esc(allNfts.find(n=>n.policyId===d.nftId)?.tokenName||'')}</span>`
-      : '';
-    return `<div class="draft-card">
-      <div class="draft-card-body">
-        <div class="draft-card-time">${new Date(d.time).toLocaleString('da-DK')}${nftName}</div>
-        <div class="draft-card-text">${esc(d.text)}</div>
-        <div class="draft-card-enc" id="draftEnc${i}">${d.encHex}</div>
-        <button class="toggle-btn" onclick="toggleDraftEnc(${i})" style="margin-top:8px">show encrypted</button>
-      </div>
-      <button class="draft-remove" onclick="removeDraft(${i})" title="Remove">×</button>
-    </div>`;
-  }).join('');
-  updateSizeIndicator();
-}
-
-// Cardano max tx size er 16384 bytes
-
-function updateSizeIndicator() {
-  // Præcis beregning: krypteret data bytes + CBOR overhead per chunk (2 bytes) + array headers
-  const dataBytes = drafts.reduce((sum, d) => {
-    const encBytes = d.encHex.length / 2;
-    const chunks = Math.ceil(encBytes / 64);
-    return sum + encBytes + chunks * 2 + 4; // data + chunk headers + array header
-  }, 0) + 20; // ydre array + label overhead
-
-  const MAX_TX_BYTES = 14000;
-  const pct = Math.min(100, Math.round(dataBytes / MAX_TX_BYTES * 100));
-  const kb  = (dataBytes / 1024).toFixed(1);
-
-  document.getElementById('sizeLabel').textContent = `~${kb} KB / 14 KB`;
-  const fill = document.getElementById('sizeBarFill');
-  fill.style.width = pct + '%';
-  fill.className = 'size-bar-fill' + (pct >= 90 ? ' full' : pct >= 70 ? ' warn' : '');
-
-  const sub = document.getElementById('sendBarSub');
-  if (pct >= 90) {
-    sub.textContent = '⚠ Næsten fuld — tilføj ikke flere noter til denne batch';
-    sub.style.color = 'var(--danger)';
-  } else if (pct >= 70) {
-    sub.textContent = '~ Nærmer sig grænsen — overvej at sende snart';
-    sub.style.color = '#e0a84a';
-  } else {
-    sub.textContent = 'pakkes i én transaktion · ~0.17 ADA fee';
-    sub.style.color = '';
-  }
 }
 
 function updateSidebarDrafts() {
   const sec = document.getElementById('sidebarDraftSec');
+  if (!sec) return;
   if (!drafts.length) { sec.style.display='none'; return; }
   sec.style.display='block';
   document.getElementById('sidebarDraftCnt').textContent = drafts.length;
@@ -2209,7 +2153,7 @@ async function sendBatch() {
     drafts = [];
     saveLocalStorage();
     updateSidebarDrafts();
-    renderDraftList();
+    renderCombinedJournal();
     updateNavEntries();
 
     setStatus('Sendt! Bekræftelse ~30 sek','ok');
@@ -2674,37 +2618,99 @@ async function loadEntries() {
 
 const isTxHash = h => typeof h === 'string' && /^[0-9a-f]{64}$/.test(h);
 
+// Byg den kombinerede journal: kladder (unsent) + kæde-noter blandet kronologisk
+async function renderCombinedJournal() {
+  updateWriteNftIndicator();
+  updateSidebarDrafts();
+  // Vis kladder øjeblikkeligt fra lokalt lager
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+
+  // Kombiner og sorter
+  const combined = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+  combined.sort((a,b) => new Date(b.time) - new Date(a.time));
+
+  renderEntries(combined);
+
+  // Opdater send-bar
+  updateSendBar();
+
+  // Hent kæde-noter i baggrunden og opdater
+  if (walletAddr && bfKey) {
+    try {
+      await loadEntries();
+      const fresh = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+      fresh.sort((a,b) => new Date(b.time) - new Date(a.time));
+      const q = document.getElementById('searchInput')?.value?.trim()?.toLowerCase() || '';
+      renderEntries(q ? fresh.filter(e=>e.text.toLowerCase().includes(q)) : fresh);
+      updateSendBar();
+    } catch {}
+  }
+}
+
+function updateSendBar() {
+  const bar = document.getElementById('sendBarInline');
+  const countEl = document.getElementById('sendBarCount');
+  const sizeBar = document.getElementById('sizeBarFill');
+  if (!bar) return;
+  if (!drafts.length) { bar.style.display='none'; return; }
+  bar.style.display = 'flex';
+  countEl.textContent = drafts.length + (drafts.length===1?' unsent':' unsent');
+  // Størrelse indikator
+  const totalBytes = drafts.reduce((s,d)=>s+d.encHex.length/2,0);
+  const pct = Math.min(100, (totalBytes/14000)*100);
+  if (sizeBar) sizeBar.style.width = pct+'%';
+}
+
 function renderEntries(entries) {
   const el = document.getElementById('entriesList');
   if (!entries.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div>No entries on chain yet.<div style="margin-top:14px"><button onclick="showScreen('write')">Write your first entry</button></div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><em>Nothing written yet.</em><div style="margin-top:8px;font-size:12px;opacity:.6">Your entries will appear here.</div></div>`;
     return;
   }
   el.innerHTML = entries.map((e,i) => {
     const date    = new Date(e.time).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const preview = e.text.length > 180 ? e.text.slice(0,180).trimEnd()+'…' : null;
+    const preview = e.text.length > 220 ? e.text.slice(0,220).trimEnd()+'…' : null;
     const batch   = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
     const nftTag  = e.nftId === '__legacy__'
-      ? `<span class="batch-tag" style="color:var(--danger);opacity:.7">legacy key</span>`
-      : allNfts.length > 1 && e.nftId
+      ? `<span class="batch-tag" style="color:var(--danger);opacity:.7">legacy</span>`
+      : allNfts.length > 1 && e.nftId && !e.isDraft
         ? `<span class="batch-tag" style="color:var(--accent)">⬡ ${esc(allNfts.find(n=>n.policyId===e.nftId)?.tokenName||'')}</span>`
         : '';
-    return `<div class="entry-card" id="ec${i}" onclick="toggleEntry(${i})">
+    const unsentBadge = e.isDraft
+      ? `<span class="unsent-badge">device only</span>`
+      : '';
+    const actions = e.isDraft
+      ? `<button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')" style="color:var(--faint)">remove</button>`
+      : `<button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">encrypted</button>
+         ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}`;
+    return `<div class="entry-card${e.isDraft?' entry-unsent':''}" id="ec${i}" onclick="toggleEntry(${i})">
       <div class="entry-head">
-        <div><span class="entry-time">${date}</span>${batch}${nftTag}</div>
-        <div class="entry-actions">
-          <button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">encrypted</button>
-          ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}
-        </div>
+        <div><span class="entry-time">${date}</span>${batch}${nftTag}${unsentBadge}</div>
+        <div class="entry-actions">${actions}</div>
       </div>
       ${preview
         ? `<div class="entry-text-preview" id="ep${i}">${esc(preview)}</div>
            <div class="entry-full-text" id="ef${i}">${esc(e.text)}</div>`
         : `<div class="entry-text">${esc(e.text)}</div>`
       }
-      <div class="entry-enc" id="ee${i}">${e.encHex}</div>
+      ${!e.isDraft ? `<div class="entry-enc" id="ee${i}">${e.encHex}</div>` : ''}
     </div>`;
   }).join('');
+
+  const total = entries.length;
+  const unsent = entries.filter(e=>e.isDraft).length;
+  document.getElementById('entryCount').textContent =
+    unsent > 0 ? `${total} entries · ${unsent} unsent` : `${total} ${total===1?'entry':'entries'}`;
+}
+
+function removeDraftByTime(time) {
+  const idx = drafts.findIndex(d => d.time === time);
+  if (idx !== -1) {
+    drafts.splice(idx, 1);
+    saveLocalStorage();
+    updateNavEntries();
+    renderCombinedJournal();
+  }
 }
 
 function toggleEntry(i) {
@@ -2716,19 +2722,11 @@ function toggleEntry(i) {
 
 function filterEntries() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  const base = savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId));
-  if (!q) {
-    renderEntries(base);
-    document.getElementById('entryCount').textContent = base.length+(base.length===1?' entry':' entries');
-    return;
-  }
-  const filtered = base.filter(e => e.text.toLowerCase().includes(q));
-  if (!filtered.length) {
-    document.getElementById('entriesList').innerHTML = `<div class="no-results">No entries match "${esc(q)}"</div>`;
-  } else {
-    renderEntries(filtered);
-  }
-  document.getElementById('entryCount').textContent = filtered.length+' / '+base.length;
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+  const base = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+  base.sort((a,b) => new Date(b.time) - new Date(a.time));
+  const filtered = q ? base.filter(e => e.text.toLowerCase().includes(q)) : base;
+  renderEntries(filtered);
 }
 
 function toggleEnc(i) {
@@ -2823,7 +2821,7 @@ function loadLocalStorage() {
     savedEntries = e ? JSON.parse(e) : [];
     updateNavEntries();
     updateSidebarDrafts();
-    if (drafts.length) renderDraftList();
+    renderCombinedJournal();
   } catch {}
 }
 
