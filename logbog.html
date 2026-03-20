@@ -1583,7 +1583,7 @@ async function mintJournalNFT() {
           try {
             const u = decodeUtxoCbor(raw);
             if (u) {
-              await reportError('parsed: '+u.tx_hash.slice(0,8)+'@'+u.tx_index+' raw_start='+raw.slice(0,16), 'utxo-crosscheck');
+              await reportError('parsed: '+u.tx_hash.slice(0,8)+'@'+u.tx_index+' idx_type='+typeof u.tx_index+' raw_start='+raw.slice(0,16), 'utxo-crosscheck');
             }
             if (u && !u.hasTokens && u.lovelace >= 3000000n) {
               if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
@@ -2600,8 +2600,11 @@ function decodeUtxoCbor(hexOrBytes) {
     if (bytes[i] === 0x58 && bytes[i+1] === 0x20) {
       const txHash = b2h(bytes.slice(i+2, i+34));
       i += 34;
-      // index
-      const index = bytes[i] & 0x1f; i++;
+      // index — fuld CBOR uint decode (kan være > 23)
+      const index = Number(decodeCborUint(bytes, i));
+      // Frem i baseret på CBOR uint størrelse
+      const idxByte = bytes[i] & 0x1f;
+      i += idxByte <= 23 ? 1 : idxByte === 24 ? 2 : idxByte === 25 ? 3 : idxByte === 26 ? 5 : 9;
       // txout: [address_bytes, lovelace] eller [address_bytes, [lovelace, tokens]]
       if ((bytes[i] & 0xe0) === 0x80) i++; // array header
       // address bytes
