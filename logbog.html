@@ -2416,14 +2416,12 @@ async function sendBatch() {
     }
 
     await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
-    await reportError('finalTx first='+finalTx.slice(0,128), 'finaltx-debug');
 
     const witnessBytes = h2b(witnessCbor);
     let finalTx;
     if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
       finalTx = witnessCbor;
     } else {
-      // Brug præcis de samme body bytes som vi sendte til signering
       finalTx = b2h(cborArray([
         h2b(txBodyFinalHex),
         witnessBytes,
@@ -2431,18 +2429,20 @@ async function sendBatch() {
         auxDataBytes
       ]));
     }
+    await reportError('finalTx first='+finalTx.slice(0,64), 'finaltx-debug');
 
     setStatus('Sending to Cardano…','loading');
     let txHash;
     try {
       txHash = await walletApi.submitTx(finalTx);
     } catch(walletSubmitErr) {
-      reportError('walletSubmit failed: '+(walletSubmitErr.info||walletSubmitErr.message||JSON.stringify(walletSubmitErr)), 'submit-wallet');
+      const rawMsg = walletSubmitErr.info||walletSubmitErr.message||JSON.stringify(walletSubmitErr);
+      reportError('walletSubmit failed: '+rawMsg, 'submit-wallet');
       try {
         txHash = await submitTx(finalTx);
       } catch(bfErr) {
         reportError(bfErr.message, 'submit-bf');
-        throw bfErr;
+        throw new Error(friendlySubmitError(bfErr.message));
       }
     }
 
@@ -2553,11 +2553,14 @@ function decodeCborUint(bytes, i) {
   if (add <= 23) return BigInt(add);
   if (add === 24) return BigInt(bytes[i+1]);
   if (add === 25) return BigInt((bytes[i+1]<<8)|bytes[i+2]);
-  if (add === 26) return BigInt((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]);
+  if (add === 26) {
+    // Brug >>> 0 for at undgå signed 32-bit overflow
+    return BigInt(((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]) >>> 0);
+  }
   if (add === 27) {
-    const hi = (bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4];
-    const lo = (bytes[i+5]<<24)|(bytes[i+6]<<16)|(bytes[i+7]<<8)|bytes[i+8];
-    return (BigInt(hi)<<32n)|BigInt(lo>>>0);
+    const hi = BigInt(((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]) >>> 0);
+    const lo = BigInt(((bytes[i+5]<<24)|(bytes[i+6]<<16)|(bytes[i+7]<<8)|bytes[i+8]) >>> 0);
+    return (hi << 32n) | lo;
   }
   return 0n;
 }
@@ -2828,14 +2831,26 @@ async function bfGet(path) {
   return res.json();
 }
 
+function friendlySubmitError(raw) {
+  const s = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  if (s.includes('InvalidWitnessesUTXOW')) {
+    return 'Signing failed: your wallet does not own the funds at this address. '
+      + 'The ADA in your wallet was likely sent from another wallet — '
+      + 'please send some ADA from a faucet or from another transaction originating in this wallet, then try again.';
+  }
+  if (s.includes('ValueNotConserved')) return 'Transaction fee calculation error — please try again.';
+  if (s.includes('BadInputsUTxO')) return 'UTxO already spent — please wait for your previous transaction to confirm.';
+  if (s.includes('OutsideValidityIntervalUTxO')) return 'Transaction expired — please try again.';
+  return s.length > 200 ? s.slice(0, 200) + '…' : s;
+}
+
 async function submitViaEternl(txCbor) {
-  // Eternl's CIP-30 submitTx — submitter direkte uden multi-sig check
   try {
     const txHash = await walletApi.submitTx(txCbor);
     return txHash;
   } catch(e) {
-    const msg = e.info || e.message || JSON.stringify(e);
-    throw new Error('Submit failed: '+msg);
+    const raw = e.info || e.message || JSON.stringify(e);
+    throw new Error(friendlySubmitError(raw));
   }
 }
 
@@ -2848,8 +2863,7 @@ async function submitTx(signedCbor) {
   });
   if (!res.ok) {
     const err = await res.json().catch(()=>({}));
-    const msg = JSON.stringify(err);
-    throw new Error('Submit fejlede: '+msg);
+    throw new Error(friendlySubmitError(JSON.stringify(err)));
   }
   return (await res.text()).replace(/"/g,'');
 }
