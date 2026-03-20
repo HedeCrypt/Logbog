@@ -59,11 +59,20 @@
   .connect-seal-inner{font-size:20px;opacity:.4}
   h1.big{font-size:2.1rem;font-weight:500;line-height:1.2;margin-bottom:.5rem;letter-spacing:-.02em}
   h1.big em{font-style:italic;color:var(--accent)}
+  .wallet-option{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border2);border-radius:7px;cursor:pointer;transition:all .15s;background:transparent;width:100%;text-align:left}
+  .wallet-option:hover{border-color:var(--accent);background:var(--accent-dim)}
+  .wallet-option:disabled{opacity:.3;cursor:not-allowed}
+  .wallet-icon{width:28px;height:28px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--surface2)}
+  .wallet-info{flex:1;min-width:0}
+  .wallet-name{font-family:var(--mono);font-size:11px;color:var(--text);letter-spacing:.04em}
+  .wallet-desc{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px}
+  .wallet-badge{font-family:var(--mono);font-size:8px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(200,150,90,.2);border-radius:3px;padding:1px 5px;flex-shrink:0}
   .connect-sub{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:2rem;font-style:italic}
   .steps-box{border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem;background:var(--surface)}
-  .step-row{display:flex;gap:12px;padding:6px 0;font-size:12px;color:var(--muted);line-height:1.6}
+  .step-row{display:flex;gap:12px;padding:8px 0;font-size:12px;color:var(--muted);line-height:1.65;align-items:flex-start}
   .step-row+.step-row{border-top:1px solid var(--border)}
-  .step-num{font-family:var(--mono);font-size:9px;color:var(--accent);min-width:18px;padding-top:2px}
+  .step-num{font-family:var(--mono);font-size:9px;color:var(--accent);min-width:22px;padding-top:2px;flex-shrink:0}
+  .step-text{flex:1}
   .err-box{background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:10px;color:var(--danger);margin-bottom:1rem;display:none;line-height:1.6}
   .api-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.25rem}
   .api-box label{font-family:var(--mono);font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:7px}
@@ -227,7 +236,39 @@
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="logo">Hede<span>Log</span> <span style="opacity:.35;font-size:8px;letter-spacing:.05em">v0.1</span></div>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-right:6px;opacity:.8">
+        <!-- Krop -->
+        <ellipse cx="50" cy="54" rx="13" ry="18" fill="var(--accent)" opacity=".9"/>
+        <!-- Hoved -->
+        <ellipse cx="50" cy="32" rx="9" ry="8" fill="var(--accent)"/>
+        <!-- Øjne -->
+        <circle cx="46" cy="30" r="2" fill="var(--bg)"/>
+        <circle cx="54" cy="30" r="2" fill="var(--bg)"/>
+        <circle cx="46.8" cy="29.2" r=".8" fill="var(--accent-bright)"/>
+        <circle cx="54.8" cy="29.2" r=".8" fill="var(--accent-bright)"/>
+        <!-- Antenner -->
+        <line x1="46" y1="24" x2="38" y2="12" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="54" y1="24" x2="62" y2="12" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="38" cy="11" r="2.5" fill="var(--accent)"/>
+        <circle cx="62" cy="11" r="2.5" fill="var(--accent)"/>
+        <!-- Vinger (4 stk) -->
+        <ellipse cx="30" cy="45" rx="16" ry="9" fill="var(--accent)" opacity=".35" transform="rotate(-25 30 45)"/>
+        <ellipse cx="70" cy="45" rx="16" ry="9" fill="var(--accent)" opacity=".35" transform="rotate(25 70 45)"/>
+        <ellipse cx="28" cy="55" rx="13" ry="7" fill="var(--accent)" opacity=".25" transform="rotate(-15 28 55)"/>
+        <ellipse cx="72" cy="55" rx="13" ry="7" fill="var(--accent)" opacity=".25" transform="rotate(15 72 55)"/>
+        <!-- Ben (6 stk) -->
+        <line x1="42" y1="50" x2="28" y2="44" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="42" y1="56" x2="26" y2="56" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="42" y1="62" x2="28" y2="68" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="58" y1="50" x2="72" y2="44" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="58" y1="56" x2="74" y2="56" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="58" y1="62" x2="72" y2="68" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- Hale-spids -->
+        <ellipse cx="50" cy="73" rx="4" ry="3" fill="var(--accent)" opacity=".7"/>
+      </svg>
+      <span style="color:var(--accent)">Hede</span>Log <span style="opacity:.35;font-size:8px;letter-spacing:.05em">v0.1</span>
+    </div>
     <div class="wallet-block">
       <div class="wallet-row">
         <div class="dot" id="walletDot"></div>
@@ -289,10 +330,10 @@
         </div>
 
         <div class="steps-box">
-          <div class="step-row"><span class="step-num">01</span>Mint a <em>Journal Key</em> NFT — it holds your encrypted journal key on-chain and proves ownership</div>
-          <div class="step-row"><span class="step-num">02</span>Write entries locally. They are encrypted on your device with NaCl secretbox before anything leaves</div>
-          <div class="step-row"><span class="step-num">03</span>Commit saved entries to Cardano in a single transaction — permanent, immutable, yours</div>
-          <div class="step-row"><span class="step-num">04</span>Transfer the NFT to hand full journal access to someone else, with forward secrecy</div>
+          <div class="step-row"><span class="step-num">01</span><span class="step-text">Mint a <em>Journal Key</em> NFT — it holds your encrypted journal key on-chain and proves ownership</span></div>
+          <div class="step-row"><span class="step-num">02</span><span class="step-text">Write entries locally. They are encrypted on your device with NaCl secretbox before anything leaves</span></div>
+          <div class="step-row"><span class="step-num">03</span><span class="step-text">Commit saved entries to Cardano in a single transaction — permanent, immutable, yours</span></div>
+          <div class="step-row"><span class="step-num">04</span><span class="step-text">Transfer the NFT to hand full journal access to someone else, with forward secrecy</span></div>
         </div>
 
         <div style="border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;flex-direction:column;gap:.6rem">
@@ -306,9 +347,18 @@
           No Blockfrost API key saved. Open <strong>Settings</strong> and add your key before connecting.
         </div>
         <div class="err-box" id="connectErr"></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="primary" onclick="connectWallet()" id="connectBtn">Connect Eternl</button>
-          <button class="ghost" onclick="openSettings()" style="opacity:.7">Settings ⚙</button>
+
+        <div id="walletPickerWrap">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Connect wallet</div>
+          <div id="walletPicker" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div id="noWalletMsg" style="display:none;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.7;padding:10px 0">
+            No compatible wallet detected.<br>
+            On <strong style="color:var(--muted)">desktop</strong>: install <a href="https://eternl.io" target="_blank" style="color:var(--accent);text-decoration:none">Eternl</a>, <a href="https://vespr.xyz" target="_blank" style="color:var(--accent);text-decoration:none">Vespr</a> or <a href="https://flint-wallet.com" target="_blank" style="color:var(--accent);text-decoration:none">Flint</a>.<br>
+            On <strong style="color:var(--muted)">mobile</strong>: open HedeLog inside the Vespr or Flint app browser.
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">Settings ⚙</button>
         </div>
       </div>
     </div>
@@ -506,17 +556,68 @@ const NETWORKS = {
 
 let selectedNetwork = 'mainnet';
 
+// ── Supported wallets ─────────────────────────────────────────────
+const SUPPORTED_WALLETS = [
+  {
+    id: 'eternl',
+    name: 'Eternl',
+    icon: '🔷',
+    desc: 'Desktop & browser extension',
+    badge: null,
+  },
+  {
+    id: 'vespr',
+    name: 'Vespr',
+    icon: '🟣',
+    desc: 'Desktop & mobile app browser',
+    badge: 'mobile',
+  },
+  {
+    id: 'flint',
+    name: 'Flint',
+    icon: '🔥',
+    desc: 'Desktop & mobile app browser',
+    badge: 'mobile',
+  },
+];
+
+let selectedWalletId = null;
+
+function renderWalletPicker() {
+  const picker = document.getElementById('walletPicker');
+  const noMsg  = document.getElementById('noWalletMsg');
+  const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
+
+  if (!available.length) {
+    picker.style.display = 'none';
+    noMsg.style.display = 'block';
+    return;
+  }
+
+  noMsg.style.display = 'none';
+  picker.style.display = 'flex';
+  picker.innerHTML = available.map(w => `
+    <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
+      <div class="wallet-icon">${w.icon}</div>
+      <div class="wallet-info">
+        <div class="wallet-name">${w.name}</div>
+        <div class="wallet-desc">${w.desc}</div>
+      </div>
+      ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
+    </button>`).join('');
+}
+
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 const DEV_BF_KEYS = { preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F' };
 
 function selectNetwork(net) {
   selectedNetwork = net;
   const cfg = NETWORKS[net];
-  // Connect screen toggles
   document.getElementById('netBtnMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
   document.getElementById('netBtnPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
   document.getElementById('connectErr').style.display='none';
   document.getElementById('bfKeyMissing').style.display='none';
+  renderWalletPicker();
   syncSettingsNet();
 }
 
@@ -764,8 +865,8 @@ function logout() {
   document.getElementById('navEntries').innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>';
   document.getElementById('settingsJournalActions').style.display = 'none';
   document.getElementById('newNoteBtn').disabled = true;
-  document.getElementById('connectBtn').disabled = false;
-  document.getElementById('connectBtn').textContent = 'Connect Eternl';
+  document.getElementById('connectBtn')?.remove?.();
+  renderWalletPicker();
   showScreen('connect');
 }
 function lockSession() {
@@ -873,11 +974,10 @@ function encryptText(text) {
 }
 
 // ── Wallet ────────────────────────────────────────────────────────
-async function connectWallet() {
+async function connectWallet(walletId) {
+  selectedWalletId = walletId;
   const cfg = NETWORKS[selectedNetwork];
 
-  // Hent nøgle fra settings — kan være krypteret eller i sessionStorage
-  // Vi tjekker om der overhovedet er en nøgle gemt (ukrypteret check)
   const netCfg = NETWORKS[selectedNetwork];
   const hasAnyKey = localStorage.getItem('kl_bfkey_enc_'+netCfg.storageKey) ||
                     localStorage.getItem('kl_bfkey_'+netCfg.storageKey) ||
@@ -891,13 +991,15 @@ async function connectWallet() {
   }
   document.getElementById('bfKeyMissing').style.display = 'none';
 
-  const btn = document.getElementById('connectBtn');
-  btn.disabled = true; btn.textContent = 'Connecting…';
+  // Vis loading state på den valgte wallet knap
+  const btn = document.getElementById('walletBtn_'+walletId);
+  if (btn) { btn.disabled = true; btn.querySelector('.wallet-name').textContent = 'Connecting…'; }
   document.getElementById('connectErr').style.display = 'none';
 
   try {
-    if (!window.cardano?.eternl) throw new Error('Eternl is not installed. Please install the extension and reload.');
-    walletApi = await window.cardano.eternl.enable();
+    const walletObj = window.cardano?.[walletId];
+    if (!walletObj) throw new Error(`${walletId} wallet not found. Please install it and reload.`);
+    walletApi = await walletObj.enable();
 
     const used   = await walletApi.getUsedAddresses();
     const unused = await walletApi.getUnusedAddresses();
@@ -927,7 +1029,7 @@ async function connectWallet() {
     bfKey = loadedKey;
 
     document.getElementById('walletDot').classList.add('on');
-    document.getElementById('walletName').textContent = 'Eternl';
+    document.getElementById('walletName').textContent = SUPPORTED_WALLETS.find(w=>w.id===selectedWalletId)?.name || selectedWalletId;
     const addrEl = document.getElementById('walletAddr');
     addrEl.textContent = walletAddr.slice(0,20)+'…'+walletAddr.slice(-6);
     addrEl.style.display = 'block';
@@ -956,7 +1058,7 @@ async function connectWallet() {
       showScreen('setup');
     }
   } catch(e) {
-    btn.disabled = false; btn.textContent = 'Connect Eternl';
+    renderWalletPicker();
     showErr(e.message||'Unknown error.');
   }
 }
@@ -2819,6 +2921,8 @@ function loadLocalStorage() {
   } catch {}
 }
 
+// Render wallet picker når extensions er injiceret (~100ms efter load)
+window.addEventListener('load', () => setTimeout(renderWalletPicker, 150));
 
 </script>
 </body>
