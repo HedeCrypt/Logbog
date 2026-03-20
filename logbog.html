@@ -2416,6 +2416,7 @@ async function sendBatch() {
     }
 
     await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
+    await reportError('finalTx first='+finalTx.slice(0,128), 'finaltx-debug');
 
     const witnessBytes = h2b(witnessCbor);
     let finalTx;
