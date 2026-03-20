@@ -2274,22 +2274,29 @@ async function sendBatch() {
 
     setStatus('Fetching UTxOs…','loading');
 
-    // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser
-    // Nødvendigt for HD wallets (Vespr, Flint) der bruger change-adresser
     let utxo = null;
     try {
       const walletUtxos = await walletApi.getUtxos();
+      await reportError('getUtxos count:' + (walletUtxos?.length||0) + ' first:' + (walletUtxos?.[0]?.slice?.(0,16)||'none'), 'utxo-raw');
       if (walletUtxos?.length) {
         for (const raw of walletUtxos) {
           try {
             const u = decodeUtxoCbor(raw);
+            if (u) {
+              await reportError('decoded: lovelace='+u.lovelace+' hasTokens='+u.hasTokens+' addr='+u.address?.slice(0,20), 'utxo-parsed');
+            }
             if (u && !u.hasTokens && u.lovelace >= 2000000n) {
               if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
             }
-          } catch { continue; }
+          } catch(parseErr) {
+            await reportError('decode failed: '+parseErr.message+' raw[0..8]='+raw.slice(0,16), 'utxo-parse-err');
+            continue;
+          }
         }
       }
-    } catch {}
+    } catch(getErr) {
+      await reportError('getUtxos threw: '+getErr.message, 'utxo-get-err');
+    }
 
     // Fallback til Blockfrost (Eternl)
     if (!utxo) {
@@ -2306,7 +2313,7 @@ async function sendBatch() {
       };
     }
     if (!utxo) throw new Error('No suitable UTxO found. Wait for previous transaction to confirm.');
-    reportError('UTxO source: ' + (utxo.address || 'blockfrost') + ' lovelace:' + utxo.lovelace, 'utxo-debug');
+    await reportError('using UTxO: ' + utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' addr='+utxo.address?.slice(0,24)+' lovelace='+utxo.lovelace, 'utxo-selected');
 
     setStatus('Henter protokolparametre…','loading');
     const params = await bfGet('epochs/latest/parameters');
