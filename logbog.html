@@ -2313,7 +2313,26 @@ async function sendBatch() {
       };
     }
     if (!utxo) throw new Error('No suitable UTxO found. Wait for previous transaction to confirm.');
-    await reportError('using UTxO: ' + utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' addr='+utxo.address?.slice(0,24)+' lovelace='+utxo.lovelace, 'utxo-selected');
+    await reportError('using UTxO: ' + utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' addr='+utxo.address?.slice(0,24)+' lovelace='+utxo.lovelace+' walletAddr='+walletAddr.slice(0,24), 'utxo-selected');
+
+    // Hent alle wallet adresser og find hvilken der matcher UTxO'en
+    // Vespr kan have mange adresser — vi skal bruge den rigtige til change output
+    let utxoOwnerAddr = utxo.address || walletAddr;
+    try {
+      const usedAddrs = await walletApi.getUsedAddresses();
+      const unusedAddrs = await walletApi.getUnusedAddresses();
+      const allAddrs = [...(usedAddrs||[]), ...(unusedAddrs||[])].map(a => {
+        try { return hexAddrToBech32(a, selectedNetwork==='preprod'?'addr_test':'addr'); } catch { return null; }
+      }).filter(Boolean);
+      await reportError('wallet addrs: '+allAddrs.slice(0,3).join(' | '), 'addr-debug');
+      // Find adresse der matcher UTxO
+      const match = allAddrs.find(a => a === utxo.address);
+      if (!match && allAddrs.length > 0) {
+        await reportError('UTxO addr mismatch! utxo='+utxo.address.slice(0,20)+' wallet[0]='+allAddrs[0].slice(0,20), 'addr-mismatch');
+      }
+    } catch(addrErr) {
+      await reportError('getAddresses err: '+addrErr.message, 'addr-err');
+    }
 
     setStatus('Henter protokolparametre…','loading');
     const params = await bfGet('epochs/latest/parameters');
