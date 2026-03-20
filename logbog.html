@@ -2392,9 +2392,14 @@ async function sendBatch() {
     }
 
     const txBodyFinal = buildBody(fee);
+    // Frys body bytes HER — bruges til både signering og final tx
+    // Vigtigt: vi må ikke kalde buildBody igen, da CBOR encoding skal være identisk
+    const txBodyFinalHex = b2h(txBodyFinal);
+    const txBodyHash = await blake2b256(txBodyFinal);
+    await reportError('txbody hash='+b2h(txBodyHash).slice(0,16)+' fee='+fee+' size='+txBodyFinal.length, 'txbody-debug');
+    await reportError('txToSign first64='+b2h(cborArray([txBodyFinal,encodeCborMap([]),cborBool(true),auxDataBytes])).slice(0,64), 'txsign-debug');
 
-    // Send denne tx (med korrekt hash) til Eternl for signatur
-    // Eternl signerer tx body hash — så body og signatur matcher
+    // Byg komplet tx til signering
     const txToSign = b2h(cborArray([
       txBodyFinal,
       encodeCborMap([]),
@@ -2410,24 +2415,20 @@ async function sendBatch() {
       throw new Error('Signing rejected in ' + (selectedWalletId||'wallet') + ': ' + (e.info || e.message || JSON.stringify(e)));
     }
 
-    // Log til debug INDEN vi forsøger submit
-    const witnessBytes = h2b(witnessCbor);
     await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
 
+    const witnessBytes = h2b(witnessCbor);
     let finalTx;
     if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
-      // Wallet returnerede et komplet signeret tx — brug det direkte
-      // (Vespr signerer sin egen version af tx'en — vi kan ikke erstatte witness)
       finalTx = witnessCbor;
     } else {
-      // Wallet returnerede kun witness map (Eternl) — saml tx manuelt
-      const finalTxBytes = cborArray([
-        txBodyFinal,
+      // Brug præcis de samme body bytes som vi sendte til signering
+      finalTx = b2h(cborArray([
+        h2b(txBodyFinalHex),
         witnessBytes,
         cborBool(true),
         auxDataBytes
-      ]);
-      finalTx = b2h(finalTxBytes);
+      ]));
     }
 
     setStatus('Sending to Cardano…','loading');
