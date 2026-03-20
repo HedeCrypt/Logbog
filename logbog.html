@@ -2294,18 +2294,29 @@ async function sendBatch() {
       auxDataBytes
     ]));
 
-    setStatus('Afventer signatur i Eternl…','loading');
+    setStatus('Waiting for wallet signature…','loading');
     let witnessCbor;
     try {
       witnessCbor = await walletApi.signTx(txToSign, true);
     } catch(e) {
-      throw new Error('Signering afvist i Eternl: ' + (e.info || e.message || JSON.stringify(e)));
+      throw new Error('Signing rejected in ' + (selectedWalletId||'wallet') + ': ' + (e.info || e.message || JSON.stringify(e)));
     }
 
-    // Saml final tx med samme body som Eternl signerede
+    // Saml final tx — håndter både Eternl (a1 = witness map) og Vespr (84 = komplet tx)
+    const witnessBytes = h2b(witnessCbor);
+    let finalWitnessBytes;
+    if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
+      // Wallet returnerede komplet tx — udtræk witness set (index 1)
+      const extracted = extractCborArrayItem(witnessBytes, 1);
+      finalWitnessBytes = extracted || witnessBytes;
+    } else {
+      // Wallet returnerede kun witness map — brug direkte
+      finalWitnessBytes = witnessBytes;
+    }
+
     const finalTx = b2h(cborArray([
       txBodyFinal,
-      h2b(witnessCbor),
+      finalWitnessBytes,
       cborBool(true),
       auxDataBytes
     ]));
