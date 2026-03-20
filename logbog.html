@@ -2225,20 +2225,40 @@ async function sendBatch() {
     // Én liste per note, ingen string-nøgler — maksimal plads
     const metaObj = { [METADATA_LABEL]: notes };
 
-    setStatus('Henter UTxOs…','loading');
-    const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
-    if (!utxos.length) throw new Error('No UTxOs found. Send ADA to your address first.');
+    setStatus('Fetching UTxOs…','loading');
 
-    // Filtrer UTxOs der indeholder tokens — brug kun rene ADA UTxOs til noter
-    // for at undgå at NFT'en ved et uheld bruges som input
-    const adaOnlyUtxos = utxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
-    const utxoPool = adaOnlyUtxos.length > 0 ? adaOnlyUtxos : utxos;
+    // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser
+    // Nødvendigt for HD wallets (Vespr, Flint) der bruger change-adresser
+    let utxo = null;
+    try {
+      const walletUtxos = await walletApi.getUtxos();
+      if (walletUtxos?.length) {
+        for (const raw of walletUtxos) {
+          try {
+            const u = decodeUtxoCbor(raw);
+            if (u && !u.hasTokens && u.lovelace >= 2000000n) {
+              if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
+            }
+          } catch { continue; }
+        }
+      }
+    } catch {}
 
-    const utxo = utxoPool.find(u => {
-      const lv = u.amount.find(a=>a.unit==='lovelace');
-      return lv && BigInt(lv.quantity) >= 2000000n;
-    });
-    if (!utxo) throw new Error('No pure ADA UTxO with min. 2 ADA available. Wait for previous transaction to confirm, or send more ADA.');
+    // Fallback til Blockfrost (Eternl)
+    if (!utxo) {
+      const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
+      if (!utxos.length) throw new Error('No UTxOs found. Send ADA to your address first.');
+      const adaOnly = utxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
+      const pool = adaOnly.length > 0 ? adaOnly : utxos;
+      const found = pool.find(u => BigInt(u.amount.find(a=>a.unit==='lovelace').quantity) >= 2000000n);
+      if (!found) throw new Error('No pure-ADA UTxO with min. 2 ADA available.');
+      utxo = {
+        tx_hash: found.tx_hash, tx_index: found.tx_index,
+        lovelace: BigInt(found.amount.find(a=>a.unit==='lovelace').quantity),
+        address: walletAddr,
+      };
+    }
+    if (!utxo) throw new Error('No suitable UTxO found. Wait for previous transaction to confirm.');
 
     setStatus('Henter protokolparametre…','loading');
     const params = await bfGet('epochs/latest/parameters');
@@ -2254,26 +2274,22 @@ async function sendBatch() {
     const minFeeA = BigInt(params.min_fee_a || 44);
     const minFeeB = BigInt(params.min_fee_b || 155381);
 
-    // Første iteration: byg tx med dummy fee for at måle bytes
-    const lovelace = BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
-
     function buildBody(fee) {
-      const change = lovelace - fee;
-      if (change < 1500000n) throw new Error('Ikke nok ADA. Du skal bruge min. ~3 ADA i én UTxO.');
-      const addrHex = walletAddr.startsWith('addr') ? bech32ToHex(walletAddr) : walletAddr;
+      const ch = utxo.lovelace - fee;
+      if (ch < 1500000n) throw new Error('Not enough ADA. Need at least ~3 ADA in one UTxO.');
+      const addrHex = utxo.address ? bech32ToHex(utxo.address) : bech32ToHex(walletAddr);
       const ab = h2b(addrHex);
-      const output = cborArray([cborBytes(ab), cborUint(change)]);
-      const outputs = cborArray([output]);
+      const changeOut = cborArray([cborBytes(ab), cborUint(ch)]);
       return encodeCborMap([
         [cborUint(0), inputs],
-        [cborUint(1), outputs],
+        [cborUint(1), cborArray([changeOut])],
         [cborUint(2), cborUint(fee)],
         [cborUint(3), cborUint(ttl)],
         [cborUint(7), cborBytes(auxHash)],
       ]);
     }
 
-    // Iterér fee 2 gange for at konvergere (fee ændrer output-størrelse minimalt)
+    // Iterér fee for at konvergere
     let fee = minFeeA * 600n + minFeeB;
     for (let i = 0; i < 3; i++) {
       const bodyBytes = buildBody(fee);
@@ -2380,7 +2396,65 @@ function buildTxParts(utxo, params, tip, metaObj) {
   return { inputs, ttl, auxDataBytes, auxDataCbor };
 }
 
-// Konverter bech32 adresse tilbage til rå bytes hex
+// Decode CIP-30 UTxO CBOR format: [txin, txout] = [[txhash, index], [address, value]]
+function decodeUtxoCbor(hexOrBytes) {
+  try {
+    const bytes = typeof hexOrBytes === 'string' ? h2b(hexOrBytes) : hexOrBytes;
+    // CIP-30 UTxO er [input, output] — vi har brug for input hash/index og output value
+    // Simpel scan: find 32-byte tx hash og lovelace value
+    let i = 0;
+    // Skip outer array header
+    if ((bytes[i] & 0xe0) === 0x80) i++;
+    // Inner array (txin): [[txhash_bytes(32), index]]
+    if ((bytes[i] & 0xe0) === 0x80) i++;
+    // txhash er bytes(32) = 0x58 0x20 + 32 bytes
+    if (bytes[i] === 0x58 && bytes[i+1] === 0x20) {
+      const txHash = b2h(bytes.slice(i+2, i+34));
+      i += 34;
+      // index
+      const index = bytes[i] & 0x1f; i++;
+      // txout: [address_bytes, lovelace] eller [address_bytes, [lovelace, tokens]]
+      if ((bytes[i] & 0xe0) === 0x80) i++; // array header
+      // address bytes
+      const addrLen = bytes[i] === 0x58 ? bytes[i+1] : bytes[i] === 0x59 ? (bytes[i+1]<<8|bytes[i+2]) : (bytes[i] & 0x1f);
+      const addrLenBytes = bytes[i] === 0x58 ? 2 : bytes[i] === 0x59 ? 3 : 1;
+      const addrBytes = bytes.slice(i + addrLenBytes, i + addrLenBytes + addrLen);
+      i += addrLenBytes + addrLen;
+      // value: lovelace uint eller [lovelace, multiasset]
+      let lovelace = 0n;
+      let hasTokens = false;
+      if ((bytes[i] & 0xe0) === 0x80) {
+        // [lovelace, multiasset]
+        hasTokens = true;
+        i++;
+        lovelace = decodeCborUint(bytes, i);
+      } else {
+        lovelace = decodeCborUint(bytes, i);
+      }
+      // Konverter adresse bytes til bech32
+      const addrPrefix = selectedNetwork === 'preprod' ? 'addr_test' : 'addr';
+      const address = hexAddrToBech32(b2h(addrBytes), addrPrefix);
+      return { tx_hash: txHash, tx_index: index, lovelace, hasTokens, address };
+    }
+  } catch {}
+  return null;
+}
+
+function decodeCborUint(bytes, i) {
+  const b = bytes[i];
+  if ((b & 0xe0) !== 0x00) return 0n;
+  const add = b & 0x1f;
+  if (add <= 23) return BigInt(add);
+  if (add === 24) return BigInt(bytes[i+1]);
+  if (add === 25) return BigInt((bytes[i+1]<<8)|bytes[i+2]);
+  if (add === 26) return BigInt((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]);
+  if (add === 27) {
+    const hi = (bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4];
+    const lo = (bytes[i+5]<<24)|(bytes[i+6]<<16)|(bytes[i+7]<<8)|bytes[i+8];
+    return (BigInt(hi)<<32n)|BigInt(lo>>>0);
+  }
+  return 0n;
+}
 function bech32ToHex(bech32addr) {
   // Find '1' separator
   const sepIdx = bech32addr.lastIndexOf('1');
