@@ -640,6 +640,27 @@ function renderWalletPicker() {
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 const DEV_BF_KEYS = { preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F' };
 
+// ── Dev fejl-rapportering ─────────────────────────────────────────
+// Sender fejl til ntfy.sh så de kan ses på mobil uden at kopiere tekst
+// Kanal: hedelog-errors — åbn https://ntfy.sh/hedelog-errors for at se dem
+const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
+async function reportError(msg, context) {
+  try {
+    const info = [
+      context || '',
+      msg,
+      'wallet:' + (selectedWalletId||'?'),
+      'net:' + selectedNetwork,
+      new Date().toISOString()
+    ].filter(Boolean).join(' | ');
+    await fetch('https://ntfy.sh/' + DEV_ERROR_TOPIC, {
+      method: 'POST',
+      body: info,
+      headers: { 'Title': 'HedeLog error' }
+    });
+  } catch {}
+}
+
 function selectNetwork(net) {
   selectedNetwork = net;
   const cfg = NETWORKS[net];
@@ -945,6 +966,7 @@ function showErr(msg) {
   const txt = document.getElementById('connectErrText');
   txt.textContent = msg;
   el.style.display = 'block';
+  reportError(msg, 'connect');
 }
 
 function copyErr() {
@@ -1572,6 +1594,7 @@ async function mintJournalNFT() {
     errEl.style.display = 'block';
     setMintStatus(e.message, 'err');
     btn.disabled = false;
+    reportError(e.message, 'mint');
   }
 }
 
@@ -2323,6 +2346,7 @@ async function sendBatch() {
   } catch(e) {
     setStatus(e.message||'Ukendt fejl.','err');
     btn.disabled = false;
+    reportError(e.message||'unknown', 'sendBatch');
   }
 }
 
