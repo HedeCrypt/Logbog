@@ -2394,7 +2394,19 @@ async function sendBatch() {
 
     // Log til debug INDEN vi forsøger submit
     const witnessBytes = h2b(witnessCbor);
-    await reportError('witness[0]=0x'+witnessBytes[0].toString(16)+' len='+witnessBytes.length+' utxo='+utxo.tx_hash.slice(0,8)+'@'+utxo.tx_index+' addr='+utxo.address.slice(0,20), 'witness-debug');
+    // Udtræk vkey fra witness for at sammenligne med hvad Cardano forventer
+    // Witness map: a1 00 81 82 58 20 [vkey 32 bytes] 58 40 [sig 64 bytes]
+    let vkeyHex = 'unknown';
+    try {
+      // Find 0x5820 (bytes(32)) pattern — vkey starter der
+      for (let wi = 0; wi < witnessBytes.length - 33; wi++) {
+        if (witnessBytes[wi] === 0x58 && witnessBytes[wi+1] === 0x20) {
+          vkeyHex = b2h(witnessBytes.slice(wi+2, wi+34));
+          break;
+        }
+      }
+    } catch {}
+    await reportError('witness[0]=0x'+witnessBytes[0].toString(16)+' len='+witnessBytes.length+' vkey='+vkeyHex.slice(0,16)+' utxo='+utxo.tx_hash.slice(0,8)+'@'+utxo.tx_index, 'witness-debug');
 
     let finalTx;
     if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
