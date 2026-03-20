@@ -1778,7 +1778,7 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   const txHashBytes = h2b(utxo.tx_hash);
 
   const input  = cborArray([cborBytes(txHashBytes), cborUint(utxo.tx_index)]);
-  const inputs = cborTag(258, cborArray([input]));
+  const inputs = cborArray([input]);
 
   const policyBytes    = h2b(policyId);
   const tokenNameBytes = new TextEncoder().encode(tokenName);
@@ -2205,11 +2205,11 @@ async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reE
 
   const input1 = cborArray([cborBytes(h2b(nftUtxo.tx_hash)), cborUint(nftUtxo.tx_index)]);
   const inputs = nftUtxo === adaUtxo
-    ? cborTag(258, cborArray([input1]))
-    : cborTag(258, cborArray([
+    ? cborArray([input1])
+    : cborArray([
         input1,
         cborArray([cborBytes(h2b(adaUtxo.tx_hash)), cborUint(adaUtxo.tx_index)])
-      ]));
+      ]);
 
   const nftValue = cborArray([
     cborUint(minUtxoAda),
@@ -2575,7 +2575,7 @@ function buildTxParts(utxo, params, tip, metaObj) {
   const ttl = tip.slot + 7200;
   const txHashBytes = h2b(utxo.tx_hash);
   const input  = cborArray([cborBytes(txHashBytes), cborUint(utxo.tx_index)]);
-  const inputs = cborTag(258, cborArray([input]));
+  const inputs = cborArray([input]);
 
   // aux data
   const metaValue    = encodeCborValue(metaObj[METADATA_LABEL]);
