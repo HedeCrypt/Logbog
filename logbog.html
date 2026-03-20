@@ -214,6 +214,22 @@
     .main{padding:1.25rem 1rem 5rem}
     .write-daynum{display:none}
     .mobile-nav{display:flex}
+    /* Entry cards på mobil */
+    .entry-card{padding:1.25rem 0}
+    .entry-card:hover{padding-left:0}
+    .entry-card::before{display:none}
+    .entry-head{flex-wrap:wrap;gap:6px}
+    .entry-actions{opacity:1 !important;width:100%;justify-content:flex-start;margin-top:4px;gap:12px}
+    .entry-text,.entry-text-preview,.entry-full-text{font-size:14px;line-height:1.75}
+    /* Unsent badge actions */
+    .entry-unsent .entry-actions{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
+    /* Write toolbar på mobil */
+    .write-toolbar{flex-wrap:wrap;gap:6px}
+    .write-top{flex-direction:column;gap:8px;align-items:stretch}
+    .search-wrap{max-width:100% !important}
+    /* Journal header */
+    .journal-header{flex-direction:column;align-items:flex-start;gap:8px}
+    .send-bar-inline{width:100%;justify-content:space-between}
   }
   /* ── Mobile bottom nav ── */
   .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:.5rem 0 env(safe-area-inset-bottom,.5rem);z-index:50;justify-content:space-around;align-items:center}
@@ -996,7 +1012,9 @@ function scrollToJournal() {
 function updateMobileNav(screenName) {
   const nav = document.getElementById('mobileNav');
   if (!nav) return;
-  nav.style.display = ['connect','setup','transfer'].includes(screenName) ? 'none' : '';
+  const hide = ['connect','setup','transfer'].includes(screenName);
+  // Sæt eksplicit — lad ikke CSS default overstyre
+  nav.style.display = hide ? 'none' : 'flex';
   if (screenName === 'write') setMobileActive('write');
 }
 
@@ -2394,19 +2412,7 @@ async function sendBatch() {
 
     // Log til debug INDEN vi forsøger submit
     const witnessBytes = h2b(witnessCbor);
-    // Udtræk vkey fra witness for at sammenligne med hvad Cardano forventer
-    // Witness map: a1 00 81 82 58 20 [vkey 32 bytes] 58 40 [sig 64 bytes]
-    let vkeyHex = 'unknown';
-    try {
-      // Find 0x5820 (bytes(32)) pattern — vkey starter der
-      for (let wi = 0; wi < witnessBytes.length - 33; wi++) {
-        if (witnessBytes[wi] === 0x58 && witnessBytes[wi+1] === 0x20) {
-          vkeyHex = b2h(witnessBytes.slice(wi+2, wi+34));
-          break;
-        }
-      }
-    } catch {}
-    await reportError('witness[0]=0x'+witnessBytes[0].toString(16)+' len='+witnessBytes.length+' vkey='+vkeyHex.slice(0,16)+' utxo='+utxo.tx_hash.slice(0,8)+'@'+utxo.tx_index, 'witness-debug');
+    await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
 
     let finalTx;
     if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
@@ -3031,12 +3037,17 @@ function renderEntries(entries) {
       ? `<span class="unsent-badge">device only</span>`
       : '';
     const actions = e.isDraft
-      ? `<button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')" style="color:var(--faint)">remove</button>`
+      ? `<button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')"
+           style="color:var(--danger);opacity:.7;padding:4px 8px;border:1px solid rgba(192,84,58,.2);border-radius:4px;font-size:9px">
+           ✕ remove
+         </button>`
       : `<button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">encrypted</button>
          ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}`;
     return `<div class="entry-card${e.isDraft?' entry-unsent':''}" id="ec${i}" onclick="toggleEntry(${i})">
       <div class="entry-head">
-        <div><span class="entry-time">${date}</span>${batch}${nftTag}${unsentBadge}</div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px">
+          <span class="entry-time">${date}</span>${batch}${nftTag}${unsentBadge}
+        </div>
         <div class="entry-actions">${actions}</div>
       </div>
       ${preview
