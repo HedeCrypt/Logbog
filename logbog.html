@@ -1,0 +1,3286 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HedeLog</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0f0d0a; --surface:#181510; --surface2:#211d17;
+    --border:#2e2820; --border2:#3d3529;
+    --text:#e4ddd0; --muted:#8a7f70; --faint:#4a4238;
+    --accent:#c8965a; --accent-dim:#2a1e0e; --accent-bright:#e0aa6a;
+    --gold:#d4a853; --gold-dim:#1e1608;
+    --danger:#c0543a; --danger-dim:#2a0e08;
+    --ink:#1a1510;
+    --mono:'JetBrains Mono',monospace; --serif:'Lora',Georgia,serif;
+    --sidebar-w:252px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--serif);min-height:100vh}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")}
+  /* Centrer shell på skærmen */
+  body{display:flex;justify-content:center}
+  .shell{width:100%;max-width:1100px;min-height:100vh}
+  .sidebar{border-right:1px solid var(--border);padding:1.5rem 1.25rem;display:flex;flex-direction:column;gap:1.25rem;position:sticky;top:0;height:100vh;overflow:hidden;background:var(--surface)}
+  .sidebar::-webkit-scrollbar{display:none}
+  .main{padding:3rem 3.5rem 6rem;max-width:740px}
+  .logo{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+  .logo span{color:var(--accent)}
+  .wallet-block{border:1px solid var(--border);border-radius:8px;padding:.875rem 1rem;background:var(--bg)}
+  .wallet-row{display:flex;align-items:center;gap:8px}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--faint);flex-shrink:0;transition:all .4s}
+  .dot.on{background:var(--accent);box-shadow:0 0 10px rgba(200,150,90,.4)}
+  .wallet-name{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .wallet-addr{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:4px;word-break:break-all;line-height:1.5}
+  .sec-lbl{font-family:var(--mono);font-size:8px;color:var(--faint);letter-spacing:.15em;text-transform:uppercase;margin-bottom:5px}
+  .draft-queue{display:flex;flex-direction:column;gap:3px}
+  .draft-pill{background:var(--accent-dim);border:1px solid rgba(200,150,90,.12);border-radius:4px;padding:4px 8px}
+  .draft-pill-txt{font-family:var(--mono);font-size:9px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav-entries{display:flex;flex-direction:column;gap:1px}
+  .nav-entry{padding:6px 8px;border-radius:5px;cursor:pointer;border:1px solid transparent;transition:all .15s}
+  .nav-entry:hover{background:var(--surface2);border-color:var(--border)}
+  .nav-entry-date{font-family:var(--mono);font-size:8px;color:var(--faint)}
+  .nav-entry-preview{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;font-style:italic}
+  button{font-family:var(--mono);font-size:10px;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted);padding:8px 15px;cursor:pointer;transition:all .15s}
+  button:hover:not(:disabled){background:var(--surface2);border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.25;cursor:not-allowed}
+  button.primary{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:500;letter-spacing:.06em}
+  button.primary:hover:not(:disabled){background:var(--accent-bright);border-color:var(--accent-bright)}
+  button.ghost{border-color:transparent;color:var(--faint);padding:8px 10px}
+  button.ghost:hover:not(:disabled){color:var(--muted);background:transparent;border-color:transparent}
+  .screen{display:none} .screen.active{display:block}
+  .connect-wrap{display:flex;flex-direction:column;justify-content:center;min-height:70vh;max-width:420px}
+  .connect-seal{width:52px;height:52px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin-bottom:1.75rem;background:var(--surface);position:relative}
+  .connect-seal::after{content:'';position:absolute;inset:5px;border-radius:50%;border:1px solid var(--border)}
+  .connect-seal-inner{font-size:20px;opacity:.4}
+  h1.big{font-size:2.1rem;font-weight:500;line-height:1.2;margin-bottom:.5rem;letter-spacing:-.02em}
+  h1.big em{font-style:italic;color:var(--accent)}
+  .wallet-option{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border2);border-radius:7px;cursor:pointer;transition:all .15s;background:transparent;width:100%;text-align:left}
+  .wallet-option:hover{border-color:var(--accent);background:var(--accent-dim)}
+  .wallet-option:disabled{opacity:.3;cursor:not-allowed}
+  .wallet-icon{width:28px;height:28px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--surface2)}
+  .wallet-info{flex:1;min-width:0}
+  .wallet-name{font-family:var(--mono);font-size:11px;color:var(--text);letter-spacing:.04em}
+  .wallet-desc{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px}
+  .wallet-badge{font-family:var(--mono);font-size:8px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(200,150,90,.2);border-radius:3px;padding:1px 5px;flex-shrink:0}
+  .connect-sub{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:2rem;font-style:italic}
+  .steps-box{border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem;background:var(--surface)}
+  .step-row{display:flex;gap:12px;padding:8px 0;font-size:12px;color:var(--muted);line-height:1.65;align-items:flex-start}
+  .step-row+.step-row{border-top:1px solid var(--border)}
+  .step-num{font-family:var(--mono);font-size:9px;color:var(--accent);min-width:22px;padding-top:2px;flex-shrink:0}
+  .step-text{flex:1}
+  .err-box{background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:10px;color:var(--danger);margin-bottom:1rem;display:none;line-height:1.6}
+  .api-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.25rem}
+  .api-box label{font-family:var(--mono);font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:7px}
+  .api-box input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 11px;transition:border-color .15s}
+  .api-box input:focus{outline:none;border-color:var(--accent)}
+  .write-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2rem;gap:8px}
+  .write-date{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:capitalize;letter-spacing:.05em}
+  .write-daynum{font-size:5rem;font-weight:600;font-style:italic;line-height:1;color:var(--text);opacity:.04;position:absolute;right:3rem;top:2.5rem;pointer-events:none;user-select:none;letter-spacing:-.04em}
+  .write-page{position:relative;padding-bottom:1rem}
+  .write-page::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,transparent,var(--border) 10%,var(--border) 90%,transparent);opacity:.4}
+  textarea{width:100%;min-height:300px;resize:none;background:transparent;border:none;border-bottom:1px solid var(--border);border-radius:0;color:var(--text);font-family:var(--serif);font-size:17px;line-height:2;padding:.5rem 0 2rem 1.5rem;transition:border-color .15s;caret-color:var(--accent)}
+  textarea:focus{outline:none;border-bottom-color:var(--border2)}
+  textarea::placeholder{color:var(--faint);font-style:italic}
+  .write-toolbar{display:flex;gap:8px;margin-top:1rem;align-items:center;padding-top:.75rem;border-top:1px solid var(--border)}
+  .char-count{font-family:var(--mono);font-size:9px;color:var(--faint);margin-left:auto}
+  .drafts-section{margin-top:3rem}
+  .drafts-header{display:flex;align-items:center;gap:10px;margin-bottom:1rem}
+  .drafts-title{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.15em}
+  .drafts-count-badge{font-family:var(--mono);font-size:8px;background:var(--accent-dim);color:var(--accent);border-radius:3px;padding:1px 5px;border:1px solid rgba(200,150,90,.2)}
+  .draft-card{border-left:2px solid var(--border);padding:.875rem 1rem .875rem 1.25rem;margin-bottom:5px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s;border-radius:0 5px 5px 0;background:var(--surface)}
+  .draft-card:hover{border-left-color:var(--accent)}
+  .draft-card-body{flex:1;min-width:0}
+  .draft-card-time{font-family:var(--mono);font-size:8px;color:var(--faint);margin-bottom:5px}
+  .draft-card-text{font-size:14px;color:var(--text);line-height:1.65;white-space:pre-wrap}
+  .draft-card-enc{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:8px;word-break:break-all;line-height:1.5;display:none}
+  .draft-card-enc.show{display:block}
+  .draft-remove{background:none;border:none;color:var(--faint);cursor:pointer;font-size:16px;padding:0 4px;opacity:.4;transition:opacity .12s;flex-shrink:0;line-height:1}
+  .draft-remove:hover{opacity:1;color:var(--danger);background:none;border:none}
+  .send-bar{border-top:1px solid var(--border);padding-top:1.25rem;margin-top:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .send-bar-count{font-family:var(--mono);font-size:9px;color:var(--faint)}
+  .size-indicator{height:2px;background:var(--border);border-radius:1px;overflow:hidden;margin-top:5px;width:100%;max-width:120px}
+  .size-bar{height:100%;background:var(--accent);border-radius:1px;transition:width .3s}
+  .read-top{display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;flex-wrap:wrap}
+  .read-title{font-size:1.4rem;font-weight:500;font-style:italic;letter-spacing:-.01em;color:var(--text)}
+  .search-wrap{position:relative;flex:1;min-width:160px}
+  .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:14px;pointer-events:none}
+  #searchInput{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--serif);font-size:13px;padding:7px 12px 7px 30px;transition:border-color .15s}
+  #searchInput:focus{outline:none;border-color:var(--border2)}
+  .entry-count-lbl{font-family:var(--mono);font-size:9px;color:var(--faint);white-space:nowrap}
+  .entries-wrap{display:flex;flex-direction:column;gap:0}
+  .entry-card{padding:1.75rem 0;border-bottom:1px solid var(--border);cursor:pointer;transition:all .15s;position:relative}
+  .entry-card:first-child{border-top:1px solid var(--border)}
+  .entry-card:hover{padding-left:.5rem}
+  .entry-card::before{content:'';position:absolute;left:0;top:1.75rem;bottom:1.75rem;width:2px;background:var(--accent);opacity:0;transition:opacity .15s;border-radius:1px}
+  .entry-card:hover::before{opacity:.4}
+  .entry-card.entry-expanded .entry-text-preview{display:none}
+  .entry-card.entry-expanded .entry-full-text{display:block}
+  .entry-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;gap:8px}
+  .entry-time{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.04em}
+  .entry-actions{display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .15s}
+  .entry-card:hover .entry-actions{opacity:1}
+  .entry-text{font-size:15px;line-height:1.9;color:var(--text);white-space:pre-wrap}
+  .entry-text-preview{font-size:15px;line-height:1.9;color:var(--text)}
+  .entry-full-text{display:none;font-size:15px;line-height:1.9;white-space:pre-wrap;color:var(--text)}
+  .entry-enc{font-family:var(--mono);font-size:9px;color:var(--faint);word-break:break-all;line-height:1.5;margin-top:12px;display:none;padding:12px;background:var(--surface);border-radius:5px;border:1px solid var(--border)}
+  .entry-enc.show{display:block}
+  .toggle-btn{font-family:var(--mono);font-size:9px;color:var(--faint);background:none;border:none;padding:0;cursor:pointer;transition:color .12s;white-space:nowrap}
+  .toggle-btn:hover{color:var(--accent);background:none;border:none}
+  .batch-tag{display:inline-flex;align-items:center;font-family:var(--mono);font-size:8px;color:var(--faint);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin-left:6px}
+  .empty-state{text-align:center;padding:5rem 2rem;color:var(--faint);font-size:14px;font-style:italic}
+  .empty-state .empty-icon{font-size:2rem;opacity:.1;margin-bottom:12px;display:block}
+  .no-results{text-align:center;padding:2rem;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .tx-confirm{background:var(--gold-dim);border:1px solid rgba(212,168,83,.2);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:none}
+  .tx-confirm.show{display:block}
+  .tx-lbl{font-family:var(--mono);font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+  .tx-hash-val{font-family:var(--mono);font-size:10px;color:var(--muted);word-break:break-all;line-height:1.5}
+  .ok{color:var(--accent)}.err{color:var(--danger)}
+  .net-toggle{display:flex;gap:4px;margin-bottom:1.25rem}
+  .net-btn{flex:1;padding:7px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--faint);font-family:var(--mono);font-size:9px;cursor:pointer;transition:all .15s;text-align:center}
+  .net-btn:hover{color:var(--text);border-color:var(--border2)}
+  .net-btn.active{background:var(--accent-dim);border-color:rgba(200,150,90,.3);color:var(--accent)}
+  .net-btn.active.preprod{border-color:rgba(180,140,80,.3);color:#c8a050;background:#1e1808}
+  .net-badge{display:inline-block;font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:3px;letter-spacing:.06em;text-transform:uppercase}
+  .net-badge.mainnet{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(200,150,90,.2)}
+  .net-badge.preprod{background:#1e1808;color:#c8a050;border:1px solid rgba(200,160,80,.2)}
+  .setup-wrap{display:flex;flex-direction:column;justify-content:center;min-height:70vh;max-width:460px}
+  .setup-hero{font-size:1.65rem;font-weight:500;line-height:1.25;margin-bottom:.5rem;letter-spacing:-.01em}
+  .setup-hero em{font-style:italic;color:var(--accent)}
+  .setup-sub{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:2rem;font-style:italic}
+  .nft-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem 1.5rem;margin-bottom:1rem}
+  .nft-card-title{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.75rem}
+  .nft-field{display:flex;flex-direction:column;gap:4px;margin-bottom:.875rem}
+  .nft-field:last-child{margin-bottom:0}
+  .nft-field label{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
+  .nft-field input{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 11px;transition:border-color .15s;width:100%}
+  .nft-field input:focus{outline:none;border-color:var(--accent)}
+  .nft-status{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px;padding:10px 0;margin-bottom:.5rem}
+  .nft-owned{background:var(--accent-dim);border:1px solid rgba(200,150,90,.15);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.25rem}
+  .nft-owned-label{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+  .nft-owned-name{font-size:1.1rem;color:var(--accent);margin-bottom:4px}
+  .nft-owned-policy{font-family:var(--mono);font-size:9px;color:var(--faint);word-break:break-all}
+  .transfer-wrap{max-width:500px}
+  .transfer-warn{background:var(--danger-dim);border:1px solid rgba(192,84,58,.2);border-radius:6px;padding:.875rem 1rem;font-family:var(--mono);font-size:10px;color:var(--danger);line-height:1.6;margin-bottom:1.25rem}
+  .transfer-steps{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:1.25rem}
+  .transfer-step{display:flex;align-items:flex-start;gap:12px;padding:.875rem 1rem;border-bottom:1px solid var(--border);font-size:12px;color:var(--faint);line-height:1.5}
+  .transfer-step:last-child{border-bottom:none}
+  .transfer-step.done{color:var(--muted)}
+  .transfer-step.active{background:var(--surface2);color:var(--text)}
+  .transfer-step-num{font-family:var(--mono);font-size:9px;color:var(--accent);min-width:18px;padding-top:2px}
+  .transfer-step-num.done{color:var(--faint)}
+  .nft-selector-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:150;display:none;align-items:flex-end;justify-content:center}
+  .nft-selector-overlay.open{display:flex}
+  .nft-selector-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px 10px 0 0;padding:1.5rem;width:100%;max-width:480px}
+  .nft-selector-title{font-family:var(--mono);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:1.25rem;display:flex;justify-content:space-between;align-items:center}
+  .nft-sel-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:.75rem 0;border-bottom:1px solid var(--border)}
+  .nft-sel-row:last-child{border-bottom:none}
+  .nft-sel-check{display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0}
+  .nft-sel-check input[type=checkbox]{width:13px;height:13px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .nft-sel-info{min-width:0}
+  .nft-sel-name{font-size:14px;color:var(--text);font-family:var(--mono)}
+  .nft-sel-policy{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px}
+  .nft-sel-write-btn{font-family:var(--mono);font-size:9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--faint);padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .12s}
+  .nft-sel-write-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .nft-sel-write-btn.active{background:var(--accent-dim);border-color:rgba(200,150,90,.3);color:var(--accent)}
+  /* ── Combined journal section ── */
+  .journal-section{margin-top:2.5rem;border-top:1px solid var(--border);padding-top:1.5rem}
+  .journal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;gap:12px;flex-wrap:wrap}
+  .journal-header-title{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+  .send-bar-inline{display:flex;align-items:center;gap:10px}
+  .send-bar-label{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .send-chain-btn{padding:6px 14px;font-size:10px}
+  .size-indicator-mini{width:40px;height:2px;background:var(--border);border-radius:1px;overflow:hidden;flex-shrink:0}
+  .size-bar-mini{height:100%;background:var(--accent);border-radius:1px;transition:width .3s}
+  .unsent-badge{font-family:var(--mono);font-size:8px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(200,150,90,.2);border-radius:3px;padding:1px 6px;margin-left:6px;letter-spacing:.04em}
+  .entry-unsent{border-left:2px solid rgba(200,150,90,.2);padding-left:.75rem}
+  .entry-unsent:hover::before{opacity:0}
+  .lock-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem}
+  .lock-overlay.show{display:flex}
+  .lock-icon{font-size:2rem;opacity:.15}
+  .lock-msg{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:center;line-height:1.8}
+  .spinner{width:13px;height:13px;border:1.5px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .page-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2rem;gap:8px;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+  h2.read-title{font-size:1.4rem;font-weight:500;font-style:italic;letter-spacing:-.01em}
+  .shell{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;position:relative;z-index:1}
+  @media(max-width:700px){
+    .shell{grid-template-columns:1fr}
+    .sidebar{display:none}
+    .main{padding:1.25rem 1rem 5rem}
+    .write-daynum{display:none}
+    .mobile-nav{display:flex}
+    /* Entry cards på mobil */
+    .entry-card{padding:1.25rem 0}
+    .entry-card:hover{padding-left:0}
+    .entry-card::before{display:none}
+    .entry-head{flex-wrap:wrap;gap:6px}
+    .entry-actions{opacity:1 !important;width:100%;justify-content:flex-start;margin-top:4px;gap:12px}
+    .entry-text,.entry-text-preview,.entry-full-text{font-size:14px;line-height:1.75}
+    /* Unsent badge actions */
+    .entry-unsent .entry-actions{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
+    /* Write toolbar på mobil */
+    .write-toolbar{flex-wrap:wrap;gap:6px}
+    .write-top{flex-direction:column;gap:8px;align-items:stretch}
+    .search-wrap{max-width:100% !important}
+    /* Journal header */
+    .journal-header{flex-direction:column;align-items:flex-start;gap:8px}
+    .send-bar-inline{width:100%;justify-content:space-between}
+  }
+  /* ── Mobile bottom nav ── */
+  .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:.5rem 0 env(safe-area-inset-bottom,.5rem);z-index:50;justify-content:space-around;align-items:center}
+  .mobile-nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:.5rem .75rem;background:none;border:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:8px;letter-spacing:.05em;text-transform:uppercase;transition:color .15s;min-width:56px}
+  .mobile-nav-btn:hover,.mobile-nav-btn.active{color:var(--accent);background:none;border:none}
+  .mobile-nav-icon{font-size:18px;line-height:1}
+  .settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
+  .settings-overlay.open{display:flex}
+  .settings-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px 10px 0 0;padding:1.5rem;width:100%;max-width:480px}
+  .settings-title{font-family:var(--mono);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:1.25rem;display:flex;justify-content:space-between;align-items:center}
+  .settings-close{background:none;border:none;color:var(--faint);cursor:pointer;font-size:18px;padding:0;transition:color .12s}
+  .settings-close:hover{color:var(--text);background:none;border:none}
+  .settings-field{margin-bottom:1rem}
+  .settings-field label{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px}
+  .settings-field input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:9px 12px;transition:border-color .15s}
+  .settings-field input:focus{outline:none;border-color:var(--accent)}
+  .settings-save{width:100%;margin-top:.25rem}
+  .settings-err{font-family:var(--mono);font-size:10px;color:var(--danger);margin-top:.5rem;display:none}
+  .settings-ok{font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:.5rem;display:none}
+  #settingsBfLabel{font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px}
+  #nftBadge{cursor:pointer;display:inline-block;margin-top:8px;font-family:var(--mono);font-size:9px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(200,150,90,.15);border-radius:4px;padding:3px 8px;transition:all .12s}
+  #nftBadge:hover{border-color:rgba(200,150,90,.3)}
+  .status-line{display:none;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--muted);padding:.5rem 0;margin-bottom:.5rem}
+  .status-line.show{display:flex}
+  .status-line .ok{color:var(--accent)}.status-line .err{color:var(--danger)}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg width="28" height="18" viewBox="0 0 140 70" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-right:7px">
+        <!-- Lang smal krop -->
+        <ellipse cx="70" cy="40" rx="38" ry="7" fill="var(--accent)" opacity=".9"/>
+        <!-- Bagkrop - segmenteret -->
+        <ellipse cx="96" cy="40" rx="14" ry="5.5" fill="var(--accent)" opacity=".7"/>
+        <ellipse cx="112" cy="40" rx="9" ry="4.5" fill="var(--accent)" opacity=".55"/>
+        <ellipse cx="124" cy="40" rx="6" ry="3.5" fill="var(--accent)" opacity=".4"/>
+        <ellipse cx="133" cy="40" rx="4" ry="2.5" fill="var(--accent)" opacity=".25"/>
+        <!-- Thorax -->
+        <ellipse cx="55" cy="38" rx="13" ry="9" fill="var(--accent)"/>
+        <!-- Hoved - stort rundt -->
+        <ellipse cx="37" cy="38" rx="10" ry="9" fill="var(--accent)"/>
+        <!-- Store øjne -->
+        <ellipse cx="33" cy="36" rx="5" ry="5.5" fill="var(--bg)" opacity=".7"/>
+        <ellipse cx="41" cy="36" rx="5" ry="5.5" fill="var(--bg)" opacity=".7"/>
+        <circle cx="33" cy="36" r="2.5" fill="var(--accent-bright)" opacity=".6"/>
+        <circle cx="41" cy="36" r="2.5" fill="var(--accent-bright)" opacity=".6"/>
+        <!-- Øvre vinger - lange og smalle -->
+        <path d="M48,36 Q38,10 12,8 Q22,22 48,34" fill="var(--accent)" opacity=".3"/>
+        <path d="M62,36 Q72,8 100,6 Q85,20 62,34" fill="var(--accent)" opacity=".3"/>
+        <!-- Nedre vinger - kortere -->
+        <path d="M50,42 Q40,52 18,54 Q28,44 50,42" fill="var(--accent)" opacity=".2"/>
+        <path d="M60,42 Q70,52 88,54 Q76,44 60,42" fill="var(--accent)" opacity=".2"/>
+        <!-- Ben (6 stk fra thorax) -->
+        <line x1="50" y1="44" x2="38" y2="56" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
+        <line x1="55" y1="46" x2="50" y2="60" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
+        <line x1="62" y1="46" x2="62" y2="62" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
+        <line x1="50" y1="33" x2="38" y2="20" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+        <line x1="55" y1="31" x2="50" y2="18" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+        <line x1="62" y1="31" x2="62" y2="17" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+      </svg>
+      <span style="color:var(--accent)">Hede</span>Log <span style="opacity:.35;font-size:8px;letter-spacing:.05em">v0.1</span>
+    </div>
+    <div class="wallet-block">
+      <div class="wallet-row">
+        <div class="dot" id="walletDot"></div>
+        <span class="wallet-name" id="walletName">Not connected</span>
+      </div>
+      <div class="wallet-addr" id="walletAddr" style="display:none"></div>
+      <div id="networkBadge" style="display:none;margin-top:8px"></div>
+      <div id="nftBadge" style="display:none"></div>
+    </div>
+
+    <!-- Journal keys selector — inline i sidebar -->
+    <div id="journalKeysSec" style="display:none">
+      <div class="sec-lbl">Journal keys</div>
+      <div id="sidebarNftList" style="display:flex;flex-direction:column;gap:3px"></div>
+    </div>
+
+    <!-- Kladder i sidebar -->
+    <div id="sidebarDraftSec" style="display:none">
+      <div class="sec-lbl">Unsent (<span id="sidebarDraftCnt">0</span>)</div>
+      <div class="draft-queue" id="sidebarDraftQ"></div>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="sec-lbl">Entries</div>
+      <div class="nav-entries" id="navEntries" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px">
+      <button onclick="showScreen('write')" id="newNoteBtn" disabled>+ New entry</button>
+      <button class="ghost" onclick="openSettings()" id="settingsBtn" style="opacity:.6">⚙ Settings</button>
+      <div id="logoutArea" style="display:none">
+        <button class="ghost" onclick="confirmLogout()" id="logoutBtn" style="opacity:.4;font-size:10px;width:100%">Sign out</button>
+        <div id="logoutConfirm" style="display:none;margin-top:4px;display:none">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--faint);text-align:center;margin-bottom:5px">Are you sure?</div>
+          <div style="display:flex;gap:4px">
+            <button onclick="logout()" style="flex:1;font-size:9px;border-color:rgba(192,84,58,.4);color:var(--danger);padding:5px">Yes, sign out</button>
+            <button onclick="cancelLogout()" class="ghost" style="flex:1;font-size:9px;padding:5px">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- CONNECT -->
+    <div class="screen active" id="screenConnect">
+      <div class="connect-wrap">
+
+        <div style="margin-bottom:1.75rem">
+          <svg width="72" height="40" viewBox="0 0 140 70" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity:.7">
+            <ellipse cx="70" cy="40" rx="38" ry="7" fill="var(--accent)" opacity=".9"/>
+            <ellipse cx="96" cy="40" rx="14" ry="5.5" fill="var(--accent)" opacity=".7"/>
+            <ellipse cx="112" cy="40" rx="9" ry="4.5" fill="var(--accent)" opacity=".55"/>
+            <ellipse cx="124" cy="40" rx="6" ry="3.5" fill="var(--accent)" opacity=".4"/>
+            <ellipse cx="133" cy="40" rx="4" ry="2.5" fill="var(--accent)" opacity=".25"/>
+            <ellipse cx="55" cy="38" rx="13" ry="9" fill="var(--accent)"/>
+            <ellipse cx="37" cy="38" rx="10" ry="9" fill="var(--accent)"/>
+            <ellipse cx="33" cy="36" rx="5" ry="5.5" fill="var(--bg)" opacity=".7"/>
+            <ellipse cx="41" cy="36" rx="5" ry="5.5" fill="var(--bg)" opacity=".7"/>
+            <circle cx="33" cy="36" r="2.5" fill="var(--accent-bright)" opacity=".6"/>
+            <circle cx="41" cy="36" r="2.5" fill="var(--accent-bright)" opacity=".6"/>
+            <path d="M48,36 Q38,10 12,8 Q22,22 48,34" fill="var(--accent)" opacity=".3"/>
+            <path d="M62,36 Q72,8 100,6 Q85,20 62,34" fill="var(--accent)" opacity=".3"/>
+            <path d="M50,42 Q40,52 18,54 Q28,44 50,42" fill="var(--accent)" opacity=".2"/>
+            <path d="M60,42 Q70,52 88,54 Q76,44 60,42" fill="var(--accent)" opacity=".2"/>
+            <line x1="50" y1="44" x2="38" y2="56" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+            <line x1="55" y1="46" x2="50" y2="60" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+            <line x1="62" y1="46" x2="62" y2="62" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+            <line x1="50" y1="33" x2="38" y2="20" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>
+            <line x1="55" y1="31" x2="50" y2="18" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>
+            <line x1="62" y1="31" x2="62" y2="17" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>
+          </svg>
+        </div>
+
+        <h1 class="big"><em>HedeLog</em></h1>
+        <p class="connect-sub">An encrypted journal, sealed on the Cardano blockchain.<br>Written once. Remembered forever.</p>
+
+        <div class="net-toggle">
+          <div class="net-btn active" id="netBtnMainnet" onclick="selectNetwork('mainnet')">Mainnet</div>
+          <div class="net-btn" id="netBtnPreprod" onclick="selectNetwork('preprod')">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
+        </div>
+
+        <div class="steps-box">
+          <div class="step-row"><span class="step-num">01</span><span class="step-text">Mint a <em>Journal Key</em> NFT — it holds your encrypted journal key on-chain and proves ownership</span></div>
+          <div class="step-row"><span class="step-num">02</span><span class="step-text">Write entries locally. They are encrypted on your device with NaCl secretbox before anything leaves</span></div>
+          <div class="step-row"><span class="step-num">03</span><span class="step-text">Commit saved entries to Cardano in a single transaction — permanent, immutable, yours</span></div>
+          <div class="step-row"><span class="step-num">04</span><span class="step-text">Transfer the NFT to hand full journal access to someone else, with forward secrecy</span></div>
+        </div>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;flex-direction:column;gap:.6rem">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.25rem">What you need</div>
+          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>Eternl wallet browser extension</div>
+          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>A free <a href="https://blockfrost.io" target="_blank" style="color:var(--accent);text-decoration:none">Blockfrost.io</a> API key for your network</div>
+          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>A small amount of ADA for the initial NFT mint (~2 ADA)</div>
+        </div>
+
+        <div id="bfKeyMissing" class="err-box" style="display:none">
+          No Blockfrost API key saved. Open <strong>Settings</strong> and add your key before connecting.
+        </div>
+        <div id="connectErr" style="display:none;background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;margin-bottom:1rem">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div id="connectErrText" style="font-family:var(--mono);font-size:10px;color:var(--danger);line-height:1.6;flex:1;user-select:all;-webkit-user-select:all"></div>
+            <button onclick="copyErr()" style="font-family:var(--mono);font-size:8px;color:var(--danger);background:none;border:1px solid rgba(192,84,58,.3);border-radius:4px;padding:3px 7px;cursor:pointer;flex-shrink:0;opacity:.7" id="copyErrBtn">copy</button>
+          </div>
+        </div>
+
+        <div id="walletPickerWrap">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Connect wallet</div>
+          <div id="walletPicker" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div id="noWalletMsg" style="display:none;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.7;padding:10px 0">
+            No compatible wallet detected.<br>
+            On <strong style="color:var(--muted)">desktop</strong>: install <a href="https://eternl.io" target="_blank" style="color:var(--accent);text-decoration:none">Eternl</a>, <a href="https://vespr.xyz" target="_blank" style="color:var(--accent);text-decoration:none">Vespr</a> or <a href="https://flint-wallet.com" target="_blank" style="color:var(--accent);text-decoration:none">Flint</a>.<br>
+            On <strong style="color:var(--muted)">mobile</strong>: open HedeLog inside the Vespr or Flint app browser.
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">Settings ⚙</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- JOURNAL (write + entries combined) -->
+    <div class="screen" id="screenWrite">
+      <div style="position:relative">
+        <div class="write-top">
+          <div class="write-date" id="writeDate"></div>
+          <div class="search-wrap" style="max-width:200px">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="searchInput" placeholder="Search…" oninput="filterEntries()" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="write-page">
+          <textarea id="noteText" placeholder="Write your entry…" oninput="updateCharCount()"></textarea>
+        </div>
+        <div class="write-toolbar">
+          <button class="primary" onclick="addDraft()">Save on device</button>
+          <button class="ghost" onclick="clearNote()">Clear</button>
+          <span id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;opacity:.6" onclick="showNftSelector()"></span>
+          <span class="char-count" id="charCount">0 chars</span>
+        </div>
+        <div class="status-line" id="statusLine"></div>
+        <div class="tx-confirm" id="txConfirm">
+          <div class="tx-lbl">Transaction submitted</div>
+          <div class="tx-hash-val" id="txHashVal"></div>
+          <div style="margin-top:8px">
+            <a id="txExplorerLink" href="#" target="_blank"
+               style="font-family:var(--mono);font-size:10px;color:var(--accent);text-decoration:none;opacity:.8">
+              View on Cardanoscan ↗
+            </a>
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;opacity:.5">Confirmation in ~20-60 sec · data is permanent on-chain</div>
+        </div>
+      </div>
+
+      <!-- Combined journal: unsent + on-chain entries -->
+      <div class="journal-section" id="journalSection">
+        <div class="journal-header">
+          <span class="journal-header-title" id="entryCount"></span>
+          <!-- Send bar — vises kun når der er usent indhold -->
+          <div class="send-bar-inline" id="sendBarInline" style="display:none">
+            <div class="size-indicator-mini">
+              <div class="size-bar-mini" id="sizeBarFill" style="width:0%"></div>
+            </div>
+            <span class="send-bar-label" id="sendBarCount"></span>
+            <button class="primary send-chain-btn" onclick="sendBatch()" id="sendBatchBtn">Send to chain</button>
+          </div>
+        </div>
+        <div class="entries-wrap" id="entriesList"></div>
+      </div>
+    </div>
+
+    <!-- SETUP (mint NFT) -->
+    <div class="screen" id="screenSetup">
+      <div class="setup-wrap">
+        <h2 class="setup-hero">Create your <em>journal key</em>.</h2>
+        <p class="setup-sub">Your journal is locked to an NFT on Cardano. Whoever holds the NFT holds the key — transfer it to hand over full access with perfect forward secrecy.</p>
+
+        <div class="nft-card">
+          <div class="nft-card-title">NFT details</div>
+          <div class="nft-field">
+            <label>Token name</label>
+            <input type="text" id="mintTokenName" value="LogKey" maxlength="32" spellcheck="false" placeholder="LogKey" onkeydown="if(event.key==='Enter')document.getElementById('mintBtn').click()">
+          </div>
+          <div class="nft-field">
+            <label>Display name (optional)</label>
+            <input type="text" id="mintDisplayName" value="Journal Key" maxlength="64" spellcheck="false" placeholder="Journal Key" onkeydown="if(event.key==='Enter')document.getElementById('mintBtn').click()">
+          </div>
+        </div>
+
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;line-height:1.7;margin-bottom:1.25rem">
+          This mints a one-shot NFT with your encrypted private key in its metadata. The NFT policy is locked after minting — only one token can ever exist.
+        </div>
+
+        <div class="nft-status" id="mintStatus" style="display:none"></div>
+        <div class="err-box" id="mintErr" style="margin-bottom:1rem"></div>
+        <div style="display:flex;gap:8px">
+          <button class="primary" onclick="mintJournalNFT()" id="mintBtn">Mint journal NFT</button>
+          <button class="ghost" onclick="showScreen('connect')" style="opacity:.6">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSFER -->
+    <div class="screen" id="screenTransfer">
+      <div class="transfer-wrap">
+        <div class="page-header" style="margin-bottom:1.5rem">
+          <h2 class="read-title">Transfer journal</h2>
+          <button class="ghost" onclick="showScreen('write')" style="opacity:.6">Cancel</button>
+        </div>
+
+        <div class="transfer-warn">
+          ⚠ This permanently transfers journal access to the recipient. Once sent, you will no longer be able to read or write entries for the transferred key.
+        </div>
+
+        <div class="nft-card" style="margin-bottom:1rem" id="transferNftSelector">
+          <div class="nft-card-title">Journal key to transfer</div>
+          <div id="transferNftList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
+        <div class="nft-card" style="margin-bottom:1.25rem">
+          <div class="nft-card-title">Recipient wallet address</div>
+          <div class="nft-field" style="margin-bottom:8px">
+            <input type="text" id="transferAddr" placeholder="addr1… or addr_test1…" spellcheck="false" autocomplete="off" style="font-size:11px" onkeydown="if(event.key==='Enter')executeTransfer()">
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.6;line-height:1.6">
+            ⚠ The recipient must have made at least one outgoing transaction on-chain before the transfer. This is required to derive their public key for encryption.
+          </div>
+        </div>
+
+        <div class="transfer-steps" id="transferSteps">
+          <div class="transfer-step" id="tstep0"><span class="transfer-step-num">01</span>Fetch recipient's public key from chain</div>
+          <div class="transfer-step" id="tstep1"><span class="transfer-step-num">02</span>Re-encrypt journal private key for recipient</div>
+          <div class="transfer-step" id="tstep2"><span class="transfer-step-num">03</span>Build transfer transaction with NFT + new encrypted key</div>
+          <div class="transfer-step" id="tstep3"><span class="transfer-step-num">04</span>Sign and submit — your access ends here</div>
+        </div>
+
+        <div class="nft-status" id="transferStatus" style="display:none;margin-bottom:.75rem"></div>
+        <div class="err-box" id="transferErr" style="margin-bottom:1rem"></div>
+        <div class="tx-confirm" id="transferConfirm">
+          <div class="tx-lbl">Transfer complete</div>
+          <div class="tx-hash-val" id="transferTxHash"></div>
+          <div style="margin-top:8px"><a id="transferExplorerLink" href="#" target="_blank" style="font-family:var(--mono);font-size:10px;color:var(--accent);text-decoration:none;opacity:.8">View on Cardanoscan ↗</a></div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;opacity:.5">Journal access has been transferred. This app will reset.</div>
+        </div>
+        <button class="primary" onclick="executeTransfer()" id="transferBtn">Transfer journal</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mobile-nav" id="mobileNav">
+  <button class="mobile-nav-btn active" id="mobileWriteBtn" onclick="showScreen('write');setMobileActive('write')">
+    <span class="mobile-nav-icon">✍</span>Write
+  </button>
+  <button class="mobile-nav-btn" id="mobileJournalBtn" onclick="showScreen('write');setMobileActive('journal');scrollToJournal()">
+    <span class="mobile-nav-icon">📖</span>Journal
+  </button>
+  <button class="mobile-nav-btn" id="mobileSettingsBtn" onclick="openSettings();setMobileActive('settings')">
+    <span class="mobile-nav-icon">⚙</span>Settings
+  </button>
+</nav>
+
+<!-- LOCK OVERLAY -->
+<div class="lock-overlay" id="lockOverlay">
+  <div class="lock-icon">⬡</div>
+  <div class="lock-msg">Session locked after inactivity.<br>Reload the page to reconnect.</div>
+  <button onclick="location.reload()">Reconnect</button>
+</div>
+
+<!-- SETTINGS OVERLAY -->
+<div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsIfOutside(event)">
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-title">
+      <span>Settings</span>
+      <button class="settings-close" onclick="closeSettings()">×</button>
+    </div>
+    <div class="net-toggle">
+      <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
+      <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
+    </div>
+    <div class="settings-field">
+      <label id="settingsBfLabel">Blockfrost API key (mainnet)</label>
+      <input type="text" id="settingsBfKey" placeholder="mainnetXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" spellcheck="false" autocomplete="off" onkeydown="if(event.key==='Enter')saveSettings()">
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;margin-bottom:1.25rem;line-height:1.7">
+      Get a free key at <a href="https://blockfrost.io" target="_blank" style="color:var(--accent);text-decoration:none">blockfrost.io</a> — create a project matching the network above.
+    </div>
+    <button class="primary settings-save" onclick="saveSettings()">Save</button>
+    <div class="err-box" id="settingsErr" style="margin-top:.75rem;margin-bottom:0"></div>
+    <div id="settingsOk" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:.75rem;display:none;text-align:center;opacity:.8">Saved ✓</div>
+
+    <!-- Journal management -->
+    <div id="settingsJournalActions" style="display:none;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Journal keys</div>
+      <button onclick="closeSettings();showNewLogbookScreen()" id="settingsNewKeyBtn">+ New journal key</button>
+      <button onclick="closeSettings();showScreen('transfer')" id="settingsTransferBtn" style="border-color:rgba(192,84,58,.3);color:var(--danger)">Transfer journal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const METADATA_LABEL = 1337;
+const SIGN_MSG = 'cardano-logbog-v1';
+
+const NETWORKS = {
+  mainnet: {
+    bfBase:     'https://cardano-mainnet.blockfrost.io/api/v0',
+    bfPrefix:   'mainnet',
+    bfPlaceholder: 'mainnetXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+    explorerTx: 'https://cardanoscan.io/transaction/',
+    label:      'Mainnet',
+    storageKey: 'mainnet',
+  },
+  preprod: {
+    bfBase:     'https://cardano-preprod.blockfrost.io/api/v0',
+    bfPrefix:   'preprod',
+    bfPlaceholder: 'preprodXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+    explorerTx: 'https://preprod.cardanoscan.io/transaction/',
+    label:      'Preprod',
+    storageKey: 'preprod',
+  }
+};
+
+let selectedNetwork = 'mainnet';
+
+// ── Supported wallets ─────────────────────────────────────────────
+const SUPPORTED_WALLETS = [
+  {
+    id: 'eternl',
+    name: 'Eternl',
+    icon: '🔷',
+    desc: 'Desktop & browser extension',
+    badge: null,
+  },
+  {
+    id: 'vespr',
+    name: 'Vespr',
+    icon: '🟣',
+    desc: 'Desktop & mobile app browser',
+    badge: 'mobile',
+  },
+  {
+    id: 'flint',
+    name: 'Flint',
+    icon: '🔥',
+    desc: 'Desktop & mobile app browser',
+    badge: 'mobile',
+  },
+];
+
+let selectedWalletId = null;
+
+function renderWalletPicker() {
+  const picker = document.getElementById('walletPicker');
+  const noMsg  = document.getElementById('noWalletMsg');
+  const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
+
+  if (!available.length) {
+    picker.style.display = 'none';
+    noMsg.style.display = 'block';
+    return;
+  }
+
+  noMsg.style.display = 'none';
+  picker.style.display = 'flex';
+  picker.innerHTML = available.map(w => `
+    <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
+      <div class="wallet-icon">${w.icon}</div>
+      <div class="wallet-info">
+        <div class="wallet-name">${w.name}</div>
+        <div class="wallet-desc">${w.desc}</div>
+      </div>
+      ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
+    </button>`).join('');
+}
+
+// ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
+const DEV_BF_KEYS = { preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F' };
+
+// ── Dev fejl-rapportering ─────────────────────────────────────────
+// Sender fejl til ntfy.sh så de kan ses på mobil uden at kopiere tekst
+// Kanal: hedelog-errors — åbn https://ntfy.sh/hedelog-errors for at se dem
+const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
+async function reportError(msg, context) {
+  try {
+    const info = [
+      context || '',
+      msg,
+      'wallet:' + (selectedWalletId||'?'),
+      'net:' + selectedNetwork,
+      new Date().toISOString()
+    ].filter(Boolean).join(' | ');
+    await fetch('https://ntfy.sh/' + DEV_ERROR_TOPIC, {
+      method: 'POST',
+      body: info,
+      headers: { 'Title': 'HedeLog error', 'Priority': context?.includes('debug') ? '2' : '4' }
+    });
+  } catch {}
+}
+
+function selectNetwork(net) {
+  selectedNetwork = net;
+  const cfg = NETWORKS[net];
+  document.getElementById('netBtnMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
+  document.getElementById('netBtnPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
+  document.getElementById('connectErr').style.display='none';
+  document.getElementById('connectErrText').textContent='';
+  document.getElementById('bfKeyMissing').style.display='none';
+  renderWalletPicker();
+  syncSettingsNet();
+}
+
+function syncSettingsNet() {
+  const net = selectedNetwork;
+  const cfg = NETWORKS[net];
+  document.getElementById('settingsNetMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
+  document.getElementById('settingsNetPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
+  document.getElementById('settingsBfLabel').textContent = 'Blockfrost API key ('+cfg.label.toLowerCase()+')';
+  document.getElementById('settingsBfKey').placeholder = cfg.bfPlaceholder;
+  // Vis indikator om nøgle er gemt — vis ikke selve nøglen
+  const hasKey = localStorage.getItem('kl_bfkey_enc_'+cfg.storageKey) ||
+                 localStorage.getItem('kl_bfkey_'+cfg.storageKey) ||
+                 sessionStorage.getItem('kl_bfkey_tmp_'+cfg.storageKey);
+  document.getElementById('settingsBfKey').value = '';
+  document.getElementById('settingsBfKey').placeholder = hasKey
+    ? '(key saved — enter new key to replace)'
+    : cfg.bfPlaceholder;
+}
+
+function openSettings() {
+  syncSettingsNet();
+  document.getElementById('settingsErr').style.display='none';
+  document.getElementById('settingsOk').style.display='none';
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function closeSettingsIfOutside(e) {
+  if (e.target === document.getElementById('settingsOverlay')) closeSettings();
+}
+
+function saveSettings() {
+  const key = document.getElementById('settingsBfKey').value.trim();
+  const cfg = NETWORKS[selectedNetwork];
+  const errEl = document.getElementById('settingsErr');
+  errEl.style.display='none';
+  if (!key) { errEl.textContent='Please enter an API key.'; errEl.style.display='block'; return; }
+  if (!key.startsWith(cfg.bfPrefix)) {
+    errEl.textContent=`Key must start with "${cfg.bfPrefix}" for ${cfg.label}.`;
+    errEl.style.display='block'; return;
+  }
+  // Hvis wallet er forbundet: gem krypteret med walletSignKey
+  // Hvis ikke: gem midlertidigt i sessionStorage (slettes ved lukning) og kryptér efter connect
+  const wsKey = secureVault.getWalletSignKey();
+  if (wsKey) {
+    encryptBfKey(key, wsKey).then(enc => {
+      try { localStorage.setItem('kl_bfkey_enc_'+cfg.storageKey, enc); } catch {}
+      // Fjern evt. gammel klartekst nøgle
+      try { localStorage.removeItem('kl_bfkey_'+cfg.storageKey); } catch {}
+    });
+  } else {
+    // Gem midlertidigt i sessionStorage til efter connect
+    try { sessionStorage.setItem('kl_bfkey_tmp_'+cfg.storageKey, key); } catch {}
+  }
+  bfKey = key;
+  document.getElementById('settingsOk').style.display='block';
+  setTimeout(closeSettings, 800);
+}
+
+// Hent Blockfrost nøgle — dekryptér med walletSignKey hvis tilgængeligt
+async function loadBfKey(storageKey) {
+  const wsKey = secureVault.getWalletSignKey();
+
+  // Forsøg krypteret version først
+  const enc = localStorage.getItem('kl_bfkey_enc_'+storageKey);
+  if (enc && wsKey) {
+    const decrypted = await decryptBfKey(enc, wsKey);
+    if (decrypted) return decrypted;
+  }
+
+  // Midlertidig session nøgle (sat før connect)
+  const tmp = sessionStorage.getItem('kl_bfkey_tmp_'+storageKey);
+  if (tmp) {
+    // Nu hvor wallet er forbundet: kryptér og gem permanent
+    if (wsKey) {
+      encryptBfKey(tmp, wsKey).then(enc => {
+        try { localStorage.setItem('kl_bfkey_enc_'+storageKey, enc); } catch {}
+        try { sessionStorage.removeItem('kl_bfkey_tmp_'+storageKey); } catch {}
+        try { localStorage.removeItem('kl_bfkey_'+storageKey); } catch {}
+      });
+    }
+    return tmp;
+  }
+
+  // Fallback: gammel ukrypteret nøgle (migrér ved næste login)
+  const legacy = localStorage.getItem('kl_bfkey_'+storageKey) || '';
+  if (legacy) return legacy;
+
+  // Dev fallback
+  return DEV_BF_KEYS[storageKey] || '';
+}
+
+// ── Sikker nøgleopbevaring via Web Crypto AES-GCM ────────────────
+// Bruges til at kryptere Blockfrost API-nøglen i localStorage
+// Krypteringsnøglen udledes fra walletSignKey via HKDF
+async function deriveBfStorageKey(walletSignKeyBytes) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', walletSignKeyBytes, 'HKDF', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('blockfrost-storage-v1'), info: new Uint8Array(0) },
+    baseKey,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+async function encryptBfKey(plaintext, walletSignKeyBytes) {
+  const aesKey = await deriveBfStorageKey(walletSignKeyBytes);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt(
+    { name:'AES-GCM', iv },
+    aesKey,
+    new TextEncoder().encode(plaintext)
+  );
+  // Gem iv (12) + ciphertext som base64
+  const combined = new Uint8Array(12 + enc.byteLength);
+  combined.set(iv); combined.set(new Uint8Array(enc), 12);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptBfKey(b64, walletSignKeyBytes) {
+  try {
+    const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const enc = combined.slice(12);
+    const aesKey = await deriveBfStorageKey(walletSignKeyBytes);
+    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, aesKey, enc);
+    return new TextDecoder().decode(dec);
+  } catch { return null; }
+}
+
+// Alle sensitive runtime-variabler er lukket inde i dette modul-scope
+// window.walletSignKey, window.nftPrivKey etc. eksisterer IKKE
+const secureVault = (() => {
+  let _walletSignKey = null;
+  let _cryptoKey     = null;
+  let _nftPrivKey    = null;
+  let _nftPubKey     = null;
+
+  return {
+    setWalletSignKey(k)  { _walletSignKey = k; },
+    setNftPrivKey(k)     { _nftPrivKey = k; _cryptoKey = k ? k.slice(0,32) : null; },
+    setCryptoKey(k)      { _cryptoKey = k; },
+    getWalletSignKey()   { return _walletSignKey; },
+    getCryptoKey()       { return _cryptoKey; },
+    getNftPrivKey()      { return _nftPrivKey; },
+    getNftPubKey()       { return _nftPubKey; },
+    setNftPubKey(k)      { _nftPubKey = k; },
+    clear() {
+      _walletSignKey = null; _cryptoKey = null;
+      _nftPrivKey = null; _nftPubKey = null;
+    }
+  };
+})();
+
+let walletApi = null, walletAddr = null, stakeAddr = null;
+let drafts = [], savedEntries = [], bfKey = '';
+let nftPolicyId = null, nftAssetName = null;
+let pendingNftUnit = null;
+
+// Multi-NFT state
+// allNfts: [{ policyId, tokenName, privKey, pubKey, cryptoKey }]
+// activeNfts: Set af policyIds der er valgt til visning
+// writeNft: policyId for den NFT der skrives med
+let allNfts = [];
+let activeNftIds = new Set();
+let writeNftId = null;
+
+// Behold disse som aliases for bagudkompatibilitet i eksisterende kode
+// Brug altid secureVault til nye adgange
+Object.defineProperty(window, 'cryptoKey', { get: () => secureVault.getCryptoKey(), set: v => secureVault.setCryptoKey(v), configurable: true });
+Object.defineProperty(window, 'walletSignKey', { get: () => secureVault.getWalletSignKey(), set: v => secureVault.setWalletSignKey(v), configurable: true });
+Object.defineProperty(window, 'nftPrivKey', { get: () => secureVault.getNftPrivKey(), set: v => secureVault.setNftPrivKey(v), configurable: true });
+Object.defineProperty(window, 'nftPubKey', { get: () => secureVault.getNftPubKey(), set: v => secureVault.setNftPubKey(v), configurable: true });
+
+const h2b = h => {
+  if (!h || typeof h !== 'string') return new Uint8Array(0);
+  const clean = h.replace(/^0x/i,'');
+  if (!/^[0-9a-fA-F]*$/.test(clean) || clean.length % 2 !== 0) return new Uint8Array(0);
+  return new Uint8Array(clean.match(/.{2}/g).map(b=>parseInt(b,16)));
+};
+const b2h = b => Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('');
+const s2h = s => b2h(new TextEncoder().encode(s));
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+// ── Auto-lock efter inaktivitet ───────────────────────────────────
+const LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutter
+let lockTimer = null;
+
+function resetLockTimer() {
+  if (!secureVault.getCryptoKey()) return; // Ikke logget ind endnu
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(lockSession, LOCK_TIMEOUT_MS);
+}
+
+function showNewLogbookScreen() {
+  // Nulstil mint-felter og vis setup-skærm
+  const nameEl = document.getElementById('mintTokenName');
+  const dispEl = document.getElementById('mintDisplayName');
+  if (nameEl) nameEl.value = '';
+  if (dispEl) dispEl.value = '';
+  document.getElementById('mintStatus').style.display = 'none';
+  document.getElementById('mintErr').style.display = 'none';
+  document.getElementById('mintBtn').disabled = false;
+  showScreen('setup');
+}
+
+function confirmLogout() {
+  document.getElementById('logoutConfirm').style.display = 'block';
+  document.getElementById('logoutBtn').style.display = 'none';
+}
+
+function cancelLogout() {
+  document.getElementById('logoutConfirm').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'block';
+}
+
+function logout() {
+  secureVault.clear();
+  bfKey = '';
+  walletApi = null; walletAddr = null; stakeAddr = null;
+  allNfts = []; activeNftIds = new Set(); writeNftId = null;
+  drafts = []; savedEntries = [];
+  _cachedOwnEd25519PubKey = null;
+  clearTimeout(lockTimer);
+
+  // Ryd sidebar
+  document.getElementById('logoutArea').style.display = 'none';
+  document.getElementById('logoutConfirm').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'block';
+  document.getElementById('walletDot').classList.remove('on');
+  document.getElementById('walletName').textContent = 'Not connected';
+  document.getElementById('walletAddr').style.display = 'none';
+  document.getElementById('networkBadge').style.display = 'none';
+  document.getElementById('nftBadge').style.display = 'none';
+  document.getElementById('journalKeysSec').style.display = 'none';
+  document.getElementById('sidebarDraftSec').style.display = 'none';
+  document.getElementById('navEntries').innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>';
+  document.getElementById('settingsJournalActions').style.display = 'none';
+  document.getElementById('newNoteBtn').disabled = true;
+  document.getElementById('connectBtn')?.remove?.();
+  renderWalletPicker();
+  showScreen('connect');
+}
+function lockSession() {
+  // Ryd alle sensitive nøgler fra hukommelsen
+  secureVault.clear();
+  bfKey = '';
+  // Vis lock screen
+  document.getElementById('lockOverlay').classList.add('show');
+}
+
+// Nulstil timer ved enhver brugerinteraktion
+['click','keydown','mousemove','touchstart'].forEach(evt =>
+  document.addEventListener(evt, resetLockTimer, { passive: true })
+);
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  // read er fusioneret med write
+  const screenName = name === 'read' ? 'write' : name;
+  document.getElementById('screen'+screenName[0].toUpperCase()+screenName.slice(1)).classList.add('active');
+  updateMobileNav(screenName);
+  if (screenName==='write') {
+    const now = new Date();
+    document.getElementById('writeDate').textContent = now.toLocaleDateString('da-DK',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    renderCombinedJournal();
+  }
+  if (name==='transfer') {
+    renderTransferNftList();
+    document.getElementById('transferConfirm').classList.remove('show');
+    document.getElementById('transferErr').style.display = 'none';
+    document.getElementById('transferStatus').style.display = 'none';
+    document.getElementById('transferBtn').disabled = false;
+  }
+}
+
+function setMobileActive(name) {
+  ['write','journal','settings'].forEach(n => {
+    const btn = document.getElementById('mobile'+n[0].toUpperCase()+n.slice(1)+'Btn');
+    if (btn) btn.classList.toggle('active', n === name);
+  });
+}
+
+function scrollToJournal() {
+  setTimeout(() => {
+    const sec = document.getElementById('journalSection');
+    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+}
+
+// Vis/skjul mobil nav baseret på hvilken screen der er aktiv
+function updateMobileNav(screenName) {
+  const nav = document.getElementById('mobileNav');
+  if (!nav) return;
+  const hide = ['connect','setup','transfer'].includes(screenName);
+  // Sæt eksplicit — lad ikke CSS default overstyre
+  nav.style.display = hide ? 'none' : 'flex';
+  if (screenName === 'write') setMobileActive('write');
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('statusLine');
+  el.className = 'status-line show';
+  const icon = type==='loading' ? '<div class="spinner"></div>' : type==='ok' ? '<span class="ok">✓</span>' : '<span class="err">✗</span>';
+  const cls  = type==='ok' ? ' class="ok"' : type==='err' ? ' class="err"' : '';
+  el.innerHTML = `${icon}<span${cls}>${msg}</span>`;
+}
+
+function showErr(msg) {
+  const el  = document.getElementById('connectErr');
+  const txt = document.getElementById('connectErrText');
+  txt.textContent = msg;
+  el.style.display = 'block';
+  reportError(msg, 'connect');
+}
+
+function copyErr() {
+  const msg = document.getElementById('connectErrText').textContent;
+  navigator.clipboard?.writeText(msg).then(() => {
+    const btn = document.getElementById('copyErrBtn');
+    btn.textContent = 'copied ✓';
+    setTimeout(() => btn.textContent = 'copy', 2000);
+  }).catch(() => {
+    // Fallback: marker teksten så brugeren kan kopiere manuelt
+    const range = document.createRange();
+    range.selectNode(document.getElementById('connectErrText'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+
+function updateCharCount() {
+  document.getElementById('charCount').textContent = document.getElementById('noteText').value.length+' chars';
+}
+
+function clearNote() {
+  document.getElementById('noteText').value = '';
+  updateCharCount();
+}
+
+// ── Kryptering ────────────────────────────────────────────────────
+function encryptWithNft(text, nftId) {
+  const nft = allNfts.find(n => n.policyId === nftId) || allNfts[0];
+  if (!nft) throw new Error('No NFT available for encryption.');
+  const nonce = nacl.randomBytes(24);
+  const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, nft.cryptoKey);
+  const out   = new Uint8Array(24+box.length);
+  out.set(nonce); out.set(box, 24);
+  return b2h(out);
+}
+
+// Forsøg at dekryptere med alle aktive NFTs — returnerer { text, nftId } eller null
+function decryptHexMulti(hex) {
+  const raw = h2b(hex);
+  if (!raw.length) return null;
+  const nonce = raw.slice(0, 24);
+  const box   = raw.slice(24);
+
+  for (const nft of allNfts) {
+    try {
+      const dec = nacl.secretbox.open(box, nonce, nft.cryptoKey);
+      if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
+    } catch {}
+  }
+
+  // Legacy
+  const wsKey = secureVault.getWalletSignKey();
+  if (wsKey) {
+    try {
+      const dec = nacl.secretbox.open(box, nonce, wsKey);
+      if (dec) return { text: new TextDecoder().decode(dec), nftId: '__legacy__' };
+    } catch {}
+  }
+
+  if (allNfts.length > 0) {
+  } else {
+  }
+  return null;
+}
+
+// Legacy enkelt-nøgle decrypt (bruges stadig af NFT-nøgle kryptering)
+function decryptHex(hex) {
+  const result = decryptHexMulti(hex);
+  return result ? result.text : null;
+}
+
+function encryptText(text) {
+  return encryptWithNft(text, writeNftId || allNfts[0]?.policyId);
+}
+
+// ── Wallet ────────────────────────────────────────────────────────
+async function connectWallet(walletId) {
+  selectedWalletId = walletId;
+  const cfg = NETWORKS[selectedNetwork];
+
+  const netCfg = NETWORKS[selectedNetwork];
+  const hasAnyKey = localStorage.getItem('kl_bfkey_enc_'+netCfg.storageKey) ||
+                    localStorage.getItem('kl_bfkey_'+netCfg.storageKey) ||
+                    sessionStorage.getItem('kl_bfkey_tmp_'+netCfg.storageKey) ||
+                    DEV_BF_KEYS[netCfg.storageKey];
+
+  if (!hasAnyKey) {
+    document.getElementById('bfKeyMissing').style.display = 'block';
+    openSettings();
+    return;
+  }
+  document.getElementById('bfKeyMissing').style.display = 'none';
+
+  // Vis loading state på den valgte wallet knap
+  const btn = document.getElementById('walletBtn_'+walletId);
+  if (btn) { btn.disabled = true; btn.querySelector('.wallet-name').textContent = 'Connecting…'; }
+  document.getElementById('connectErr').style.display = 'none';
+
+  try {
+    const walletObj = window.cardano?.[walletId];
+    if (!walletObj) throw new Error(`${walletId} wallet not found. Please install it and reload.`);
+    walletApi = await walletObj.enable();
+
+    const used   = await walletApi.getUsedAddresses();
+    const unused = await walletApi.getUnusedAddresses();
+    const all    = [...used,...unused];
+    if (!all.length) throw new Error('No addresses found in wallet.');
+    const rawAddr = all[0];
+
+    // CIP-30 returnerer hex-encoded adresse bytes — konverter til bech32
+    // Preprod bruger prefix "addr_test", mainnet bruger "addr"
+    const addrPrefix = selectedNetwork === 'preprod' ? 'addr_test' : 'addr';
+    walletAddr = hexAddrToBech32(rawAddr, addrPrefix);
+
+    try {
+      const rewards = await walletApi.getRewardAddresses();
+      const rawStake = rewards[0] || rawAddr;
+      const stakePrefix = selectedNetwork === 'preprod' ? 'stake_test' : 'stake';
+      stakeAddr = hexAddrToBech32(rawStake, stakePrefix);
+    } catch { stakeAddr = walletAddr; }
+
+    await deriveKey(); // sætter walletSignKey via secureVault
+
+    // Nu kan vi dekryptere Blockfrost nøglen
+    const loadedKey = await loadBfKey(netCfg.storageKey);
+    if (!loadedKey || !loadedKey.startsWith(netCfg.bfPrefix)) {
+      throw new Error('Could not load Blockfrost API key. Please re-enter it in Settings.');
+    }
+    bfKey = loadedKey;
+
+    document.getElementById('walletDot').classList.add('on');
+    document.getElementById('walletName').textContent = SUPPORTED_WALLETS.find(w=>w.id===selectedWalletId)?.name || selectedWalletId;
+    const addrEl = document.getElementById('walletAddr');
+    addrEl.textContent = walletAddr.slice(0,20)+'…'+walletAddr.slice(-6);
+    addrEl.style.display = 'block';
+
+    const badgeEl = document.getElementById('networkBadge');
+    badgeEl.innerHTML = `<span class="net-badge ${selectedNetwork}">${netCfg.label}</span>`;
+    badgeEl.style.display = 'block';
+
+    // Tjek for Journal NFT i wallet
+    btn.textContent = 'Checking for journal NFT…';
+    const nftFound = await detectJournalNFT();
+
+    document.getElementById('newNoteBtn').disabled = false;
+
+    loadLocalStorage();
+    resetLockTimer();
+    document.getElementById('logoutArea').style.display = 'block';
+    document.getElementById('settingsJournalActions').style.display = 'flex';
+
+    if (nftFound) {
+      showScreen('write');
+      // Opdater journal sidebar med noter fra kæden
+      loadEntries().then(() => updateNavEntries()).catch(()=>{});
+    } else {
+      // Ingen NFT — vis setup skærm
+      showScreen('setup');
+    }
+  } catch(e) {
+    renderWalletPicker();
+    showErr(e.message||'Unknown error.');
+  }
+}
+
+async function deriveKey() {
+  let result;
+  try { result = await walletApi.signData(stakeAddr, s2h(SIGN_MSG)); }
+  catch(e) { throw new Error('Signing rejected in Eternl. Please accept to derive the encryption key.'); }
+
+  let sigHex = '';
+  if (typeof result === 'string') sigHex = result;
+  else if (result?.signature) sigHex = result.signature;
+  else throw new Error('Unexpected response from signData.');
+
+  const sigBytes = h2b(sigHex);
+  let seedBytes;
+
+  try {
+    const sig64 = extractCborArrayItem(sigBytes, 3);
+    if (sig64 && sig64.length >= 66) seedBytes = sig64.slice(2, 66);
+  } catch {}
+
+  if (!seedBytes || seedBytes.length !== 64) seedBytes = sigBytes;
+
+  // walletSignKey bruges KUN til at kryptere/dekryptere NFT's private key
+  // Notes krypteres altid med NFT-nøglen — cryptoKey sættes af NFT-detection
+  const hash = await crypto.subtle.digest('SHA-256', seedBytes);
+  walletSignKey = new Uint8Array(hash);
+  // cryptoKey sættes IKKE her — det sættes af detectJournalNFT via setWriteNft
+}
+
+// ── NFT detection ─────────────────────────────────────────────────
+// Journal NFT identificeres ved CIP-25 metadata label 721
+// med et specifikt felt: "journalKey: true" i token metadata
+const NFT_META_LABEL = 721;
+const JOURNAL_ENTRY_LABEL = 1337;
+
+async function detectJournalNFT() {
+  pendingNftUnit = null;
+  allNfts = [];
+  const pendingUnits = [];
+
+  try {
+    const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
+    const allAssets = [];
+    for (const utxo of utxos) {
+      for (const amt of utxo.amount) {
+        if (amt.unit !== 'lovelace') allAssets.push(amt.unit);
+      }
+    }
+
+    for (const unit of allAssets) {
+      const policyId     = unit.slice(0, 56);
+      const assetNameHex = unit.slice(56);
+      const tokenName    = assetNameHex ? new TextDecoder().decode(h2b(assetNameHex)) : '';
+
+      try {
+        const meta    = await bfGet('assets/'+unit);
+        const onchain = meta.onchain_metadata;
+        if (!onchain) continue;
+
+        let tokenData = null;
+        if (onchain[policyId]?.[tokenName]) tokenData = onchain[policyId][tokenName];
+        else if (onchain[tokenName]) tokenData = onchain[tokenName];
+        else if (onchain.journalKey !== undefined) tokenData = onchain;
+        if (!tokenData?.journalKey) continue;
+
+        let encPrivKeyBytes = null;
+        const raw = tokenData.encPrivKey;
+        if (Array.isArray(raw)) {
+          const hexStr = raw.map(chunk => {
+            if (typeof chunk === 'string') return chunk.replace(/^0x/i, '');
+            if (chunk?.bytes) return chunk.bytes.replace(/^0x/i, '');
+            return '';
+          }).join('');
+          encPrivKeyBytes = h2b(hexStr);
+        } else if (typeof raw === 'string') {
+          encPrivKeyBytes = h2b(raw.replace(/^0x/i, ''));
+        }
+        if (!encPrivKeyBytes) continue;
+
+        const privKey = decryptNFTKey(encPrivKeyBytes);
+
+        // Udtræk pubKey fra metadata til validering ved transfer-nøgle
+        let metaPubKey = null;
+        const rawPub = tokenData.pubKey;
+        if (rawPub) {
+          const pubHex = Array.isArray(rawPub)
+            ? rawPub.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+            : (typeof rawPub==='string' ? rawPub.replace(/^0x/i,'') : '');
+          if (pubHex) metaPubKey = h2b(pubHex);
+        }
+
+        if (privKey) {
+          allNfts.push(makeNftEntry(privKey, policyId, tokenName));
+        } else {
+          pendingUnits.push({ policyId, tokenName, pubKey: metaPubKey });
+        }
+      } catch { continue; }
+    }
+
+    // Forsøg transfer-nøgle for NFTs der ikke kunne dekrypteres direkte
+    // Hent alle kandidater én gang og match mod pubKey for hver pending NFT
+    let transferCandidates = null;
+    if (pendingUnits.length > 0) {
+      transferCandidates = await findTransferKey();
+    }
+
+    for (const pending of pendingUnits) {
+      let matched = null;
+      for (const privKey of (transferCandidates || [])) {
+        if (pending.pubKey) {
+          const derivedPub = nacl.box.keyPair.fromSecretKey(privKey).publicKey;
+          const match = b2h(derivedPub) === b2h(pending.pubKey);
+          if (match) { matched = privKey; break; }
+        } else {
+          matched = privKey; break;
+        }
+      }
+      if (matched) allNfts.push(makeNftEntry(matched, pending.policyId, pending.tokenName));
+    }
+    pendingNftUnit = null;
+
+  } catch(e) {
+  }
+
+  if (!allNfts.length) return false;
+
+  // Gendan gemte valg
+  const savedActive = loadNftSelection();
+  if (savedActive && savedActive.length) {
+    activeNftIds = new Set(savedActive.filter(id => allNfts.some(n => n.policyId === id)));
+    writeNftId   = savedActive[0];
+  }
+  if (!activeNftIds.size) {
+    activeNftIds = new Set(allNfts.map(n => n.policyId));
+    writeNftId   = allNfts[0].policyId;
+  }
+
+  // Sæt bagudkompatibel cryptoKey til den primære NFT
+  cryptoKey = allNfts.find(n => n.policyId === writeNftId)?.cryptoKey || allNfts[0].cryptoKey;
+  nftPolicyId  = writeNftId;
+  nftAssetName = allNfts.find(n => n.policyId === writeNftId)?.tokenName || '';
+
+  updateNftBadge();
+
+  // Vis valgskærm hvis der er mere end én NFT
+  if (allNfts.length > 1) {
+    showNftSelector();
+    return true;
+  }
+
+  return true;
+}
+
+function makeNftEntry(privKey, policyId, tokenName) {
+  const entry = {
+    policyId,
+    tokenName,
+    privKey,
+    pubKey:    nacl.box.keyPair.fromSecretKey(privKey).publicKey,
+    cryptoKey: privKey.slice(0, 32),
+  };
+  return entry;
+}
+
+function updateNftBadge() {
+  const badge = document.getElementById('nftBadge');
+  if (!allNfts.length) { badge.style.display='none'; return; }
+  const activeNames = allNfts.filter(n => activeNftIds.has(n.policyId)).map(n => n.tokenName);
+  badge.textContent = '⬡ ' + (activeNames.length === 1 ? activeNames[0] : activeNames.length+' journals');
+  badge.style.display = 'block';
+  badge.style.cursor = allNfts.length > 1 ? 'pointer' : 'default';
+  badge.onclick = allNfts.length > 1 ? showNftSelector : null;
+  renderSidebarNftList();
+}
+
+function renderSidebarNftList() {
+  const sec = document.getElementById('journalKeysSec');
+  const list = document.getElementById('sidebarNftList');
+  if (allNfts.length <= 1) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  list.innerHTML = allNfts.map(nft => {
+    const isActive = activeNftIds.has(nft.policyId);
+    const isWrite  = writeNftId === nft.policyId;
+    return `<div style="display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;border:1px solid ${isWrite?'rgba(200,150,90,.3)':'transparent'};background:${isWrite?'var(--accent-dim)':'transparent'};cursor:pointer;transition:all .12s"
+      onclick="setWriteNft('${nft.policyId}')">
+      <input type="checkbox" ${isActive?'checked':''} style="accent-color:var(--accent);cursor:pointer;flex-shrink:0;width:12px;height:12px"
+        onclick="event.stopPropagation();toggleNftActive('${nft.policyId}', this.checked)">
+      <span style="font-family:var(--mono);font-size:10px;color:${isWrite?'var(--accent)':'var(--muted)'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⬡ ${esc(nft.tokenName)}</span>
+      ${isWrite?'<span style="font-family:var(--mono);font-size:8px;color:var(--accent);opacity:.6">writing</span>':''}
+    </div>`;
+  }).join('');
+}
+
+function saveNftSelection() {
+  try {
+    const sel = { active: [...activeNftIds], write: writeNftId };
+    localStorage.setItem('kl_nft_sel_'+selectedNetwork, JSON.stringify(sel));
+  } catch {}
+}
+
+function loadNftSelection() {
+  try {
+    const raw = localStorage.getItem('kl_nft_sel_'+selectedNetwork);
+    if (!raw) return null;
+    const sel = JSON.parse(raw);
+    return sel.active || null;
+  } catch { return null; }
+}
+
+function showNftSelector() {
+  // Journal keys vises nu direkte i sidebar
+  document.getElementById('journalKeysSec')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function closeNftSelector() {}
+
+function toggleNftActive(policyId, checked) {
+  if (checked) activeNftIds.add(policyId);
+  else {
+    if (activeNftIds.size <= 1) return;
+    activeNftIds.delete(policyId);
+    if (writeNftId === policyId) writeNftId = [...activeNftIds][0];
+  }
+  saveNftSelection();
+  updateNftBadge();
+  renderCombinedJournal(); // Opdater journal straks
+}
+
+function setWriteNft(policyId) {
+  writeNftId = policyId;
+  if (!activeNftIds.has(policyId)) activeNftIds.add(policyId);
+  // Opdater cryptoKey til den valgte NFT
+  const nft = allNfts.find(n => n.policyId === policyId);
+  if (nft) cryptoKey = nft.cryptoKey;
+  nftPolicyId  = policyId;
+  nftAssetName = nft?.tokenName || '';
+  saveNftSelection();
+  updateNftBadge();
+  renderSidebarNftList();
+  // Genrender kladder da NFT-valg kan være ændret
+  renderCombinedJournal();
+}
+// Cache for vores egen Ed25519 public key — ændrer sig aldrig per session
+let _cachedOwnEd25519PubKey = null;
+
+async function findTransferKey() {
+  const candidates = [];
+  try {
+    const myEd25519PubKey = await getOwnEd25519PubKey();
+    if (!myEd25519PubKey) return candidates;
+
+    const mySeed    = await sha256(myEd25519PubKey);
+    const myKeyPair = nacl.box.keyPair.fromSecretKey(clampCurve25519(mySeed));
+
+    // Brug Blockfrost metadata-endpoint — søg kun på label 1338 direkte
+    // i stedet for at hente metadata for alle transaktioner
+    for (let page = 1; page <= 10; page++) {
+      const metaTxs = await bfGet('metadata/txs/labels/1338?order=desc&count=100&page='+page);
+      if (!metaTxs.length) break;
+
+      for (const item of metaTxs) {
+        try {
+          const m = item.json_metadata;
+          if (!m?.encPrivKey) continue;
+
+          const raw = m.encPrivKey;
+          const hexStr = Array.isArray(raw)
+            ? raw.map(c => (typeof c==='string' ? c : c?.bytes||'').replace(/^0x/i,'')).join('')
+            : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
+          if (!hexStr) continue;
+
+          const privKey = decryptNFTKeyFromTransfer(h2b(hexStr), myKeyPair.secretKey);
+          if (privKey) candidates.push(privKey);
+        } catch { continue; }
+      }
+      if (metaTxs.length < 100) break;
+    }
+  } catch {}
+  return candidates;
+}
+
+// Hent vores egen Ed25519 public key fra kæden (fra vores egne udgående txs)
+async function getOwnEd25519PubKey() {
+  if (_cachedOwnEd25519PubKey) return _cachedOwnEd25519PubKey;
+  try {
+    const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=asc&count=20');
+    for (const tx of txs) {
+      try {
+        const utxos = await bfGet('txs/'+tx.tx_hash+'/utxos');
+        if (!utxos.inputs.some(i => i.address === walletAddr)) continue;
+        const txCbor = await fetch(
+          NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
+          { headers: { 'project_id': bfKey } }
+        ).then(r => r.json());
+        if (!txCbor?.cbor) continue;
+        const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
+        if (pubKey) { _cachedOwnEd25519PubKey = pubKey; return pubKey; }
+      } catch { continue; }
+    }
+  } catch {}
+  return null;
+}
+
+function clampCurve25519(bytes) {
+  const k = new Uint8Array(bytes);
+  k[0] &= 248; k[31] &= 127; k[31] |= 64;
+  return k;
+}
+
+// Kryptér NFT private nøgle med wallet sign key (NaCl secretbox)
+function encryptNFTKey(privKeyBytes) {
+  const nonce = nacl.randomBytes(24);
+  const box   = nacl.secretbox(privKeyBytes, nonce, walletSignKey);
+  const out   = new Uint8Array(24+box.length);
+  out.set(nonce); out.set(box, 24);
+  return out;
+}
+
+function decryptNFTKey(encBytes) {
+  try {
+    const dec = nacl.secretbox.open(encBytes.slice(24), encBytes.slice(0,24), walletSignKey);
+    return dec || null;
+  } catch { return null; }
+}
+
+// Kryptér NFT private nøgle med modtagers Curve25519 public key
+// til brug ved overdragelse
+function encryptNFTKeyForRecipient(privKeyBytes, recipientPubKey) {
+  // Brug NaCl box (asymmetrisk) — ephemeral sender keypair
+  const ephemeral = nacl.box.keyPair();
+  const nonce     = nacl.randomBytes(24);
+  const box       = nacl.box(privKeyBytes, nonce, recipientPubKey, ephemeral.secretKey);
+  // Gem: ephemeral pubkey (32) + nonce (24) + box
+  const out = new Uint8Array(32+24+box.length);
+  out.set(ephemeral.publicKey, 0);
+  out.set(nonce, 32);
+  out.set(box, 56);
+  return out;
+}
+
+function decryptNFTKeyFromTransfer(encBytes, myPrivKey) {
+  try {
+    const senderPub = encBytes.slice(0, 32);
+    const nonce     = encBytes.slice(32, 56);
+    const box       = encBytes.slice(56);
+    return nacl.box.open(box, nonce, senderPub, myPrivKey) || null;
+  } catch { return null; }
+}
+
+// ── Mint Journal NFT ──────────────────────────────────────────────
+async function mintJournalNFT() {
+  const tokenName    = document.getElementById('mintTokenName').value.trim() || 'LogKey';
+  const displayName  = document.getElementById('mintDisplayName').value.trim() || tokenName;
+  const btn          = document.getElementById('mintBtn');
+  const statusEl     = document.getElementById('mintStatus');
+  const errEl        = document.getElementById('mintErr');
+
+  btn.disabled = true;
+  errEl.style.display = 'none';
+
+  const setMintStatus = (msg, type='loading') => {
+    statusEl.style.display = 'flex';
+    const icon = type==='loading' ? '<div class="spinner"></div>' : type==='ok' ? '<span class="ok">✓</span>' : '<span class="err">✗</span>';
+    statusEl.innerHTML = `${icon}<span style="${type==='err'?'color:var(--danger)':type==='ok'?'color:var(--accent)':''}">${msg}</span>`;
+  };
+
+  try {
+    setMintStatus('Generating key pair…');
+    // Generer Curve25519 nøglepar til journalen
+    const keyPair = nacl.box.keyPair();
+    const privKey = keyPair.secretKey; // 32 bytes
+    const pubKey  = keyPair.publicKey; // 32 bytes
+
+    // Kryptér privat nøgle med wallet-signaturen
+    const encPrivKey = encryptNFTKey(privKey);
+
+    setMintStatus('Fetching UTxOs…');
+    let utxo = null;
+
+    // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser (korrekt for HD wallets)
+    try {
+      const walletUtxos = await walletApi.getUtxos();
+      await reportError('mint getUtxos count:'+(walletUtxos?.length||0)+' raw0='+walletUtxos?.[0]?.slice(0,32), 'mint-utxo-raw');
+      if (walletUtxos?.length) {
+        for (const raw of walletUtxos) {
+          try {
+            const u = decodeUtxoCbor(raw);
+            if (u && !u.hasTokens && u.lovelace >= 3000000n) {
+              if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
+            }
+          } catch { continue; }
+        }
+      }
+    } catch(e) {
+      await reportError('mint getUtxos err:'+e.message, 'mint-utxo-err');
+    }
+
+    // Fallback til Blockfrost
+    if (!utxo) {
+      let bfUtxos;
+      try {
+        bfUtxos = await bfGet('addresses/'+walletAddr+'/utxos');
+      } catch(e) {
+        if (e.message?.includes('not been found') || e.message?.includes('404')) {
+          throw new Error('This wallet has no transaction history on chain yet. Send some tADA to your address first.');
+        }
+        throw e;
+      }
+      if (!bfUtxos.length) throw new Error('No UTxOs found. Send tADA to your address from the Cardano faucet first.');
+      const adaOnly = bfUtxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
+      const pool = adaOnly.length > 0 ? adaOnly : bfUtxos;
+      const found = pool.find(u => BigInt(u.amount.find(a=>a.unit==='lovelace').quantity) >= 3000000n);
+      if (!found) throw new Error('Need at least 3 ADA in a single pure-ADA UTxO to mint.');
+      utxo = {
+        tx_hash: found.tx_hash, tx_index: found.tx_index,
+        lovelace: BigInt(found.amount.find(a=>a.unit==='lovelace').quantity),
+        address: walletAddr,
+      };
+    }
+    if (!utxo) throw new Error('No suitable UTxO found for minting.');
+    await reportError('mint using UTxO:'+utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' lovelace='+utxo.lovelace+' addr='+utxo.address?.slice(0,20), 'mint-utxo-sel');
+
+    const params = await bfGet('epochs/latest/parameters');
+    const tip    = await bfGet('blocks/latest');
+
+    setMintStatus('Building mint transaction…');
+
+    // One-shot minting policy: scriptet bruger tx input hash som nonce
+    // Policy: native script { type: "sig", keyHash: <pubKeyHash> } kombineret med
+    // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
+    // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
+    const paymentKeyHash = await getPaymentKeyHash();
+
+    // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
+    const lockSlot = tip.slot + 600; // Matcher TTL — policy låser permanent efter dette
+    const policyScript = buildNativeScript(paymentKeyHash, lockSlot);
+    const policyId = await computePolicyId(policyScript);
+    // Verificer: tagged script (0x00 + script) blake2b-224
+    const tagged = concat(new Uint8Array([0x00]), policyScript);
+    const directHash = await blake2b224(tagged);
+
+    // CIP-25 metadata
+    const tokenNameHex = b2h(new TextEncoder().encode(tokenName));
+    const encPrivKeyChunks = chunkBytes(encPrivKey, 64);
+    const pubKeyChunks     = chunkBytes(pubKey, 64);
+
+    const nftMetadata = {
+      [policyId]: {
+        [tokenName]: {
+          name:        displayName,
+          journalKey:  1, // marker
+          pubKey:      pubKeyChunks,
+          encPrivKey:  encPrivKeyChunks,
+          version:     1,
+        }
+      }
+    };
+
+    const txCbor = await buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata);
+
+    setMintStatus('Submitting to Cardano…');
+    // Brug Eternl's submitTx direkte — undgår Blockfrost multi-sig dialog
+    const txHash = await submitViaEternl(txCbor);
+
+    // Opdater multi-NFT state
+    const newNft = makeNftEntry(privKey, policyId, tokenName);
+    allNfts = [newNft];
+    activeNftIds = new Set([policyId]);
+    writeNftId = policyId;
+    cryptoKey = newNft.cryptoKey;
+    nftPolicyId  = policyId;
+    nftAssetName = tokenName;
+    updateNftBadge();
+
+    setMintStatus('Minted! Waiting for confirmation…', 'ok');
+
+    // Vis tx link
+    const explorerUrl = NETWORKS[selectedNetwork].explorerTx + txHash;
+    statusEl.insertAdjacentHTML('afterend',
+      `<div style="font-family:var(--mono);font-size:10px;margin-top:8px">
+        <a href="${explorerUrl}" target="_blank" style="color:var(--accent);text-decoration:none">View on Cardanoscan ↗</a>
+       </div>`);
+
+    setTimeout(() => showScreen('write'), 3000);
+
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    setMintStatus(e.message, 'err');
+    btn.disabled = false;
+    reportError(e.message, 'mint');
+  }
+}
+
+// Hent payment key hash fra wallet adresse
+async function getPaymentKeyHash() {
+  // Forsøg 1: hent pkh fra en on-chain tx der er signeret af denne wallet
+  // Vi scanner wallet's udgående transaktioner og udtrækker vkey fra witness
+  try {
+    const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=10');
+    for (const tx of txs) {
+      try {
+        const cbor = await fetch(
+          NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
+          { headers: { 'project_id': bfKey } }
+        ).then(r=>r.json());
+        if (!cbor?.cbor) continue;
+        const bytes = h2b(cbor.cbor);
+        // tx CBOR: [body, witness_set, bool, aux]
+        // witness_set map key 0 = vkeywitnesses = [[vkey(32), sig(64)], ...]
+        const witnessSet = extractCborArrayItem(bytes, 1);
+        if (!witnessSet) continue;
+        const vkeyWitnesses = extractCborMapValue(witnessSet, 0);
+        if (!vkeyWitnesses) continue;
+        // vkeyWitnesses er array af [vkey, sig] — udtræk første vkey
+        const vkeyBytes = vkeyWitnesses;
+        // Scan for 0x5820 pattern (bytes(32) = vkey)
+        for (let i = 0; i < vkeyBytes.length - 33; i++) {
+          if (vkeyBytes[i] === 0x58 && vkeyBytes[i+1] === 0x20) {
+            const pubKey = vkeyBytes.slice(i+2, i+34);
+            const pkh = await blake2b224(pubKey);
+            const pkhHex = b2h(pkh);
+            await reportError('pkh from chain tx: '+pkhHex.slice(0,16)+' vkey='+b2h(pubKey).slice(0,16), 'pkh-chain');
+            return pkhHex;
+          }
+        }
+      } catch { continue; }
+    }
+  } catch(e) {
+    await reportError('chain pkh lookup failed: '+e.message, 'pkh-chain-err');
+  }
+
+  // Fallback: adresse bytes
+  const addrHex = bech32ToHex(walletAddr);
+  const addrBytes = h2b(addrHex);
+  return b2h(addrBytes.slice(1, 29));
+}
+
+// Byg native script: { all: [sig(pkh), before(slot)] }
+function buildNativeScript(paymentKeyHash, lockSlot) {
+  // CBOR encoding af native script til policy ID beregning
+  // Native script format: [1, [[0, pkh_bytes], [5, slot]]]
+  // type 1 = ScriptAll, type 0 = ScriptPubkey, type 5 = RequireTimeExpiry
+  const pkhBytes  = h2b(paymentKeyHash);
+  const sigScript = cborArray([cborUint(0), cborBytes(pkhBytes)]);
+  const expScript = cborArray([cborUint(5), cborUint(lockSlot)]);
+  return cborArray([cborUint(1), cborArray([sigScript, expScript])]);
+}
+
+async function computePolicyId(nativeScriptCbor) {
+  // Policy ID = blake2b-224 af (0x00 + script CBOR)
+  // Vi bruger blake2b-256 og tager de første 28 bytes (224 bit)
+  const tagged = concat(new Uint8Array([0x00]), nativeScriptCbor);
+  const hash28 = await blake2b224(tagged);
+  return b2h(hash28);
+}
+
+function chunkBytes(bytes, size) {
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += size) chunks.push(bytes.slice(i, i+size));
+  return chunks;
+}
+
+// ── Byg mint transaktion ──────────────────────────────────────────
+async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata) {
+  // Håndter både CIP-30 format (lovelace som BigInt) og Blockfrost format (amount array)
+  const lovelace = utxo.lovelace !== undefined
+    ? BigInt(utxo.lovelace)
+    : BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
+  const ttl        = tip.slot + 600;
+  const minFeeA    = BigInt(params.min_fee_a || 44);
+  const minFeeB    = BigInt(params.min_fee_b || 155381);
+  const minUtxoAda = 2000000n;
+
+  // Brug UTxO's egen adresse hvis tilgængelig — vigtigt for HD wallets
+  const addrHex   = bech32ToHex(utxo.address || walletAddr);
+  const addrBytes = h2b(addrHex);
+  const txHashBytes = h2b(utxo.tx_hash);
+
+  const input  = cborArray([cborBytes(txHashBytes), cborUint(utxo.tx_index)]);
+  const inputs = cborTag(258, cborArray([input]));
+
+  const policyBytes    = h2b(policyId);
+  const tokenNameBytes = new TextEncoder().encode(tokenName);
+
+  // Mint field (tx body key 9): { policyId_bytes: { tokenname_bytes: amount } }
+  const mintField = encodeCborMap([
+    [cborBytes(policyBytes),
+     encodeCborMap([[cborBytes(tokenNameBytes), cborUint(1)]])]
+  ]);
+
+  // NFT output value: [lovelace, { policyId: { tokenName: 1 } }]
+  const tokenBundle = encodeCborMap([
+    [cborBytes(policyBytes),
+     encodeCborMap([[cborBytes(tokenNameBytes), cborUint(1)]])]
+  ]);
+  const nftValue  = cborArray([cborUint(minUtxoAda), tokenBundle]);
+  const nftOutput = cborArray([cborBytes(addrBytes), nftValue]);
+
+  // Aux data: CIP-25 NFT metadata
+  const auxMetaValue = encodeCborValue(nftMetadata);
+  const auxDataBytes = encodeCborMap([[cborUint(NFT_META_LABEL), auxMetaValue]]);
+  const auxHash      = await blake2b256(auxDataBytes);
+
+  // Tx body — native scripts er IKKE i body, de er i witness set
+  // Felt 9 = mint, felt 7 = aux_data_hash, felt 3 = ttl
+  function buildMintBody(fee) {
+    const change = lovelace - fee - minUtxoAda;
+    if (change < 1000000n) throw new Error('Not enough ADA. Need at least 3 ADA in one UTxO.');
+    const changeOutput = cborArray([cborBytes(addrBytes), cborUint(change)]);
+    return encodeCborMap([
+      [cborUint(0), inputs],
+      [cborUint(1), cborArray([nftOutput, changeOutput])],
+      [cborUint(2), cborUint(fee)],
+      [cborUint(3), cborUint(ttl)],
+      [cborUint(7), cborBytes(auxHash)],
+      [cborUint(9), mintField],
+    ]);
+  }
+
+  // Iterér fee
+  let fee = minFeeA * 800n + minFeeB;
+  for (let i = 0; i < 3; i++) {
+    const b = buildMintBody(fee);
+    const txSize = BigInt(b.length + 200 + auxDataBytes.length + policyScript.length);
+    fee = minFeeA * txSize + minFeeB + 2000n;
+  }
+
+  const txBodyFinal = buildMintBody(fee);
+
+  // transaction_witness_set: { 1: [native_script] }
+
+
+  // Send tx TIL Eternl uden native script — den skal kun signere tx body hash
+  // Native script tilføjes bagefter inden submit
+  const txForSigning = b2h(cborArray([
+    txBodyFinal,
+    encodeCborMap([]),   // tomt witness set
+    cborBool(true),
+    auxDataBytes
+  ]));
+
+  let witnessCbor;
+  try { witnessCbor = await walletApi.signTx(txForSigning, true); }
+  catch(e) { throw new Error('Signing rejected: '+(e.info||e.message||JSON.stringify(e))); }
+
+  // Log vkey fra witness og payment key hash fra adresse
+  try {
+    const wb = h2b(witnessCbor);
+    let vkey = 'unknown';
+    for (let i = 0; i < wb.length - 33; i++) {
+      if (wb[i] === 0x58 && wb[i+1] === 0x20) { vkey = b2h(wb.slice(i+2, i+34)); break; }
+    }
+    const pkh = await getPaymentKeyHash();
+    await reportError('mint vkey='+vkey.slice(0,16)+' pkh='+pkh.slice(0,16), 'mint-keymatch');
+  } catch {}
+
+
+  // Eternl kan returnere enten:
+  // A) Komplet signeret tx (array af 4: [body, witnesses, bool, aux])  — starter med 0x84
+  // B) Kun witness set (map) — starter med 0xa1
+  const resultBytes = h2b(witnessCbor);
+  const firstByte = resultBytes[0];
+
+  let finalWitness;
+
+  if (firstByte === 0x84 || firstByte === 0x83) {
+    // Eternl returnerede komplet tx — udtræk witness set (index 1 i array)
+    const witnessFromTx = extractCborArrayItem(resultBytes, 1);
+    if (witnessFromTx) {
+      // Merge native script ind i witness
+      const vkeyBytes = extractCborMapValue(witnessFromTx, 0);
+      if (vkeyBytes) {
+        finalWitness = encodeCborMap([
+          [cborUint(0), vkeyBytes],
+          [cborUint(1), cborArray([policyScript])],
+        ]);
+      } else {
+        finalWitness = witnessFromTx;
+      }
+    } else {
+      finalWitness = resultBytes;
+    }
+  } else {
+    // Eternl returnerede kun witness map
+    const vkeyBytes = extractCborMapValue(resultBytes, 0);
+    if (vkeyBytes) {
+      finalWitness = encodeCborMap([
+        [cborUint(0), vkeyBytes],
+        [cborUint(1), cborArray([policyScript])],
+      ]);
+    } else {
+      // extractCborMapValue fejlede — byg witness manuelt ved at appende script
+      // Eternl's a1 map: a1 + 00 + vkey_array
+      // Vi bygger a2 map: a2 + 00 + vkey_array + 01 + [policyScript]
+      const scriptEntry = concat(cborUint(1), cborArray([policyScript]));
+      // Skift første byte fra a1 til a2 og tilføj script
+      const patched = new Uint8Array(resultBytes.length + scriptEntry.length);
+      patched[0] = 0xa2; // map(2)
+      patched.set(resultBytes.slice(1), 1);
+      patched.set(scriptEntry, resultBytes.length);
+      finalWitness = patched;
+    }
+  }
+
+  const finalTx = b2h(cborArray([txBodyFinal, finalWitness, cborBool(true), auxDataBytes]));
+  return finalTx;
+}
+
+// Merge Eternl's vkey witness med vores native script witness
+function mergeWitnessSets(eternlWitnessCbor, scriptWitnessBytes) {
+  // Eternl returnerer { 0: [[vkey, sig]] } (kun vkey witnesses)
+  // Vi tilføjer { 1: [nativeScript] }
+  // Parse Eternl's witness for at finde vkey entries
+  const eternlBytes = h2b(eternlWitnessCbor);
+
+  // Enkel tilgang: byg nyt map med felt 0 fra Eternl og felt 1 fra os
+  // Eternl witness er en map — udtræk felt 0 (vkey witnesses)
+  const vkeyWitnesses = extractCborMapValue(eternlBytes, 0);
+
+  if (vkeyWitnesses) {
+    // Byg merged witness: { 0: vkeys, 1: [nativeScript] }
+    const policyScript = extractCborMapValue(h2b(b2h(scriptWitnessBytes)), 1);
+    if (policyScript) {
+      return encodeCborMap([
+        [cborUint(0), vkeyWitnesses],
+        [cborUint(1), policyScript],
+      ]);
+    }
+  }
+
+  // Fallback: returner Eternl's witness som-er (native script mangler men submit vil fejle med bedre fejlbesked)
+  return eternlBytes;
+}
+
+// Udtræk item N fra en CBOR array
+function extractCborArrayItem(bytes, itemIndex) {
+  try {
+    let i = 0;
+    const b = bytes[i];
+    if ((b & 0xe0) !== 0x80) return null;
+    const arrayLen = b & 0x1f;
+    i++;
+    for (let n = 0; n < arrayLen; n++) {
+      const start = i;
+      const end = skipCborValue(bytes, i);
+      if (n === itemIndex) return bytes.slice(start, end);
+      i = end;
+    }
+  } catch {}
+  return null;
+}
+
+// Udtræk en værdi fra en CBOR map ved en given uint nøgle
+function extractCborMapValue(bytes, keyNum) {
+  // Scan efter map og find entry med given key
+  try {
+    let i = 0;
+    // Forvent map header
+    if ((bytes[i] & 0xe0) !== 0xa0) return null;
+    const mapLen = bytes[i] & 0x1f;
+    i++;
+    for (let n = 0; n < mapLen; n++) {
+      // Læs key
+      const keyStart = i;
+      const key = readCborUint(bytes, i);
+      i = key.nextIdx;
+      const valStart = i;
+      const valEnd = skipCborValue(bytes, i);
+      if (key.value === keyNum) {
+        return bytes.slice(valStart, valEnd);
+      }
+      i = valEnd;
+    }
+  } catch {}
+  return null;
+}
+
+function readCborUint(bytes, i) {
+  const b = bytes[i];
+  if ((b & 0xe0) !== 0x00) return { value: -1, nextIdx: i+1 };
+  const add = b & 0x1f;
+  if (add <= 23) return { value: add, nextIdx: i+1 };
+  if (add === 24) return { value: bytes[i+1], nextIdx: i+2 };
+  if (add === 25) return { value: (bytes[i+1]<<8)|bytes[i+2], nextIdx: i+3 };
+  return { value: -1, nextIdx: i+1 };
+}
+
+function skipCborValue(bytes, i) {
+  const b = bytes[i];
+  const major = (b & 0xe0) >> 5;
+  const add   = b & 0x1f;
+  let len;
+  let headerLen = 1;
+  if (add <= 23) len = add;
+  else if (add === 24) { len = bytes[i+1]; headerLen = 2; }
+  else if (add === 25) { len = (bytes[i+1]<<8)|bytes[i+2]; headerLen = 3; }
+  else if (add === 26) { len = (bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]; headerLen = 5; }
+  else len = 0;
+
+  i += headerLen;
+  if (major === 2 || major === 3) return i + len; // bytes or text
+  if (major === 4) { // array
+    for (let n = 0; n < len; n++) i = skipCborValue(bytes, i);
+    return i;
+  }
+  if (major === 5) { // map
+    for (let n = 0; n < len*2; n++) i = skipCborValue(bytes, i);
+    return i;
+  }
+  if (major === 6) return skipCborValue(bytes, i); // tag
+  return i; // primitive
+}
+
+// ── Transfer journal ──────────────────────────────────────────────
+let selectedTransferNftId = null;
+
+function renderTransferNftList() {
+  const container = document.getElementById('transferNftSelector');
+  const list = document.getElementById('transferNftList');
+
+  if (!allNfts.length) {
+    list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--danger)">No journal NFTs found in wallet.</div>';
+    return;
+  }
+
+  if (!selectedTransferNftId || !allNfts.find(n => n.policyId === selectedTransferNftId)) {
+    selectedTransferNftId = allNfts[0].policyId;
+  }
+
+  // Vis altid selector — dropdown er pæn selv med én NFT
+  list.innerHTML = `
+    <select id="transferNftSelect"
+      onchange="selectedTransferNftId=this.value"
+      style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:7px;
+             color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 11px;
+             cursor:pointer;transition:border-color .12s">
+      ${allNfts.map(nft => `
+        <option value="${nft.policyId}" ${nft.policyId===selectedTransferNftId?'selected':''}>
+          ⬡ ${esc(nft.tokenName)} — ${nft.policyId.slice(0,14)}…
+        </option>`).join('')}
+    </select>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.5;margin-top:6px">
+      ${allNfts.length} journal key${allNfts.length!==1?'s':''} in wallet
+    </div>`;
+
+  // Fokus på select element for at fremhæve det
+  setTimeout(() => document.getElementById('transferNftSelect')?.focus(), 50);
+}
+
+async function executeTransfer() {
+  const recipientAddr = document.getElementById('transferAddr').value.trim();
+  const btn           = document.getElementById('transferBtn');
+  const statusEl      = document.getElementById('transferStatus');
+  const errEl         = document.getElementById('transferErr');
+
+  if (!recipientAddr) { errEl.textContent='Please enter a recipient address.'; errEl.style.display='block'; return; }
+
+  const nft = allNfts.find(n => n.policyId === selectedTransferNftId) || allNfts[0];
+  if (!nft) { errEl.textContent='No journal NFT found in this wallet.'; errEl.style.display='block'; return; }
+
+  btn.disabled = true;
+  errEl.style.display = 'none';
+
+  const setTransStatus = (msg, stepIdx, type='loading') => {
+    statusEl.style.display = 'flex';
+    const icon = type==='loading'?'<div class="spinner"></div>':type==='ok'?'<span class="ok">✓</span>':'<span class="err">✗</span>';
+    statusEl.innerHTML = `${icon}<span style="${type==='err'?'color:var(--danger)':type==='ok'?'color:var(--accent)':''}">${msg}</span>`;
+    for (let i=0; i<4; i++) {
+      const el = document.getElementById('tstep'+i);
+      if (i < stepIdx) el.className='transfer-step done';
+      else if (i===stepIdx) el.className='transfer-step active';
+      else el.className='transfer-step';
+    }
+  };
+
+  try {
+    setTransStatus('Fetching recipient public key…', 0);
+    const recipientPubKey = await fetchWalletPublicKey(recipientAddr);
+    if (!recipientPubKey) throw new Error('Could not find recipient public key. They must have made at least one transaction.');
+
+    setTransStatus('Re-encrypting journal key…', 1);
+    const recipientCurveKey = await ed25519ToCurve25519(recipientPubKey);
+    const reEncrypted = encryptNFTKeyForRecipient(nft.privKey, recipientCurveKey);
+
+    setTransStatus('Building transfer transaction…', 2);
+
+    const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
+    const nftUnit = nft.policyId + b2h(new TextEncoder().encode(nft.tokenName));
+    const nftUtxo = utxos.find(u => u.amount.some(a => a.unit === nftUnit));
+    if (!nftUtxo) throw new Error('NFT not found in UTxOs. It may still be confirming.');
+
+    const adaUtxo = utxos.find(u => {
+      const lv = u.amount.find(a=>a.unit==='lovelace');
+      return lv && BigInt(lv.quantity) >= 2000000n && u.tx_hash !== nftUtxo.tx_hash;
+    }) || nftUtxo;
+
+    const params = await bfGet('epochs/latest/parameters');
+    const tip    = await bfGet('blocks/latest');
+
+    const finalTxCbor = await buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncrypted, nft);
+
+    setTransStatus('Submitting…', 3);
+    const txHash = await submitTx(finalTxCbor);
+
+    // Fjern den transfererede NFT fra allNfts
+    allNfts = allNfts.filter(n => n.policyId !== nft.policyId);
+    activeNftIds.delete(nft.policyId);
+    if (writeNftId === nft.policyId) writeNftId = allNfts[0]?.policyId || null;
+
+    // Ryd lokal cache og sidebar for denne wallet
+    try {
+      const cacheKey = selectedNetwork+'_'+walletAddr;
+      localStorage.removeItem('kl_entries_'+cacheKey);
+      localStorage.removeItem('kl_drafts_'+cacheKey);
+    } catch {}
+    savedEntries = [];
+    drafts = [];
+    updateNavEntries();
+    renderCombinedJournal();
+
+    document.getElementById('transferTxHash').textContent = txHash;
+    document.getElementById('transferExplorerLink').href = NETWORKS[selectedNetwork].explorerTx + txHash;
+    document.getElementById('transferConfirm').classList.add('show');
+    setTransStatus('Transfer complete', 3, 'ok');
+
+    setTimeout(() => location.reload(), 5000);
+
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+async function fetchWalletPublicKey(addr) {
+  try {
+    const txs = await bfGet('addresses/'+addr+'/transactions?order=asc&count=20');
+    if (!txs.length) return null;
+    for (const tx of txs) {
+      try {
+        const utxos = await bfGet('txs/'+tx.tx_hash+'/utxos');
+        if (!utxos.inputs.some(i => i.address === addr)) continue;
+        const txCbor = await fetch(
+          NETWORKS[selectedNetwork].bfBase+'/txs/'+tx.tx_hash+'/cbor',
+          { headers: { 'project_id': bfKey } }
+        ).then(r => r.json());
+        if (!txCbor?.cbor) continue;
+        const pubKey = extractPubKeyFromTxCbor(h2b(txCbor.cbor));
+        if (pubKey) return pubKey;
+      } catch { continue; }
+    }
+  } catch {}
+  return null;
+}
+
+function extractPubKeyFromTxCbor(txBytes) {
+  // TX CBOR: [body, {0: [[pubkey(32), sig(64)], ...]}, valid, aux]
+  // Find 0xa1 (map 1) 0x00 (key 0) 0x81/0x82... (array) then array items
+  // Enkel tilgang: scan efter 32-byte + 64-byte sekvenser
+  for (let i = 0; i < txBytes.length - 100; i++) {
+    // vkey witness: array(2) [bytes(32), bytes(64)]
+    if (txBytes[i] === 0x82 && txBytes[i+1] === 0x58 && txBytes[i+2] === 0x20) {
+      return txBytes.slice(i+3, i+35); // 32 bytes pubkey
+    }
+  }
+  return null;
+}
+
+// Konverter Ed25519 public key til Curve25519 (X25519)
+// Bruger elligator2 / Ristretto omregning — approksimation via hashing
+async function ed25519ToCurve25519(ed25519PubKey) {
+  // Deterministisk konvertering: SHA-256 af pubkey → clamped Curve25519 seed
+  // Modtageren dekrypterer med clampCurve25519(walletSignKey) i findTransferKey
+  const hash = await sha256(ed25519PubKey);
+  return nacl.box.keyPair.fromSecretKey(clampCurve25519(hash)).publicKey;
+}
+
+async function buildTransferTx(nftUtxo, adaUtxo, params, tip, recipientAddr, reEncryptedKey, nft) {
+  const usePolicyId   = nft?.policyId  || nftPolicyId;
+  const useAssetName  = nft?.tokenName || nftAssetName;
+  const policyBytes  = h2b(usePolicyId);
+  const tokenBytes   = new TextEncoder().encode(useAssetName);
+  const senderBytes  = h2b(bech32ToHex(walletAddr));
+  const recipPrefix  = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
+  const recipBytes   = h2b(bech32ToHex(recipientAddr));
+
+  const minUtxoAda = 1500000n;
+
+  // Metadata med re-krypteret nøgle (label 1338) + afsender-adresse som bytes
+  const reEncChunks = chunkBytes(reEncryptedKey, 64);
+  const fromBytes   = h2b(bech32ToHex(walletAddr));
+  const transferMeta = { transfer: 1, encPrivKey: reEncChunks, from: chunkBytes(fromBytes, 64) };
+  const auxMetaValue  = encodeCborValue(transferMeta);
+  const auxDataBytes  = encodeCborMap([[cborUint(1338), auxMetaValue]]);
+  const auxHash       = await blake2b256(auxDataBytes);
+
+  const lovelaceNft = BigInt(nftUtxo.amount.find(a=>a.unit==='lovelace').quantity);
+  const lovelaceAda = nftUtxo === adaUtxo ? 0n : BigInt(adaUtxo.amount.find(a=>a.unit==='lovelace').quantity);
+
+  const input1 = cborArray([cborBytes(h2b(nftUtxo.tx_hash)), cborUint(nftUtxo.tx_index)]);
+  const inputs = nftUtxo === adaUtxo
+    ? cborTag(258, cborArray([input1]))
+    : cborTag(258, cborArray([
+        input1,
+        cborArray([cborBytes(h2b(adaUtxo.tx_hash)), cborUint(adaUtxo.tx_index)])
+      ]));
+
+  const nftValue = cborArray([
+    cborUint(minUtxoAda),
+    encodeCborMap([[cborBytes(policyBytes), encodeCborMap([[cborBytes(tokenBytes), cborUint(1)]])]])
+  ]);
+  const recipOutput  = cborArray([cborBytes(recipBytes), nftValue]);
+
+  const minFeeA = BigInt(params.min_fee_a || 44);
+  const minFeeB = BigInt(params.min_fee_b || 155381);
+  const ttl     = tip.slot + 7200;
+
+  function buildTransBody(fee) {
+    const totalIn = lovelaceNft + lovelaceAda;
+    const change  = totalIn - minUtxoAda - fee;
+    if (change < 1000000n) throw new Error('Not enough ADA for transfer fee.');
+    const changeOut = cborArray([cborBytes(senderBytes), cborUint(change)]);
+    return encodeCborMap([
+      [cborUint(0), inputs],
+      [cborUint(1), cborArray([recipOutput, changeOut])],
+      [cborUint(2), cborUint(fee)],
+      [cborUint(3), cborUint(ttl)],
+      [cborUint(7), cborBytes(auxHash)],
+    ]);
+  }
+
+  let fee = minFeeA * 700n + minFeeB;
+  for (let i=0; i<3; i++) {
+    const b = buildTransBody(fee);
+    fee = minFeeA * BigInt(b.length + 200 + auxDataBytes.length) + minFeeB + 1000n;
+  }
+
+  const txBodyFinal = buildTransBody(fee);
+  const tempTx = b2h(cborArray([txBodyFinal, encodeCborMap([]), cborBool(true), auxDataBytes]));
+
+  let witnessCbor;
+  try { witnessCbor = await walletApi.signTx(tempTx, false); }
+  catch(e) { throw new Error('Signing rejected.'); }
+
+  return b2h(cborArray([txBodyFinal, h2b(witnessCbor), cborBool(true), auxDataBytes]));
+}
+
+// ── blake2b-224 (policy ID) ───────────────────────────────────────
+// Separat variant med digest_length=28 i parameter block
+async function blake2b224(data) {
+  const IV = [
+    0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn,
+    0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+    0x510e527fade682d1n, 0x9b05688c2b3e6c1fn,
+    0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
+  ];
+  // Parameter block: digest_length=28, key_length=0, fanout=1, depth=1
+  const h0xor = 28n | (1n << 16n) | (1n << 24n);
+  let h = [IV[0] ^ h0xor, ...IV.slice(1)];
+
+  const mask64 = 0xffffffffffffffffn;
+  const rotr64 = (x,n) => ((x>>BigInt(n))|(x<<BigInt(64-n)))&mask64;
+  const add64  = (...a) => a.reduce((x,y)=>(x+y)&mask64);
+  const SIGMA  = [
+    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],[14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+    [11,8,12,0,5,2,15,13,10,14,3,6,7,1,9,4],[7,9,3,1,13,12,11,14,2,6,5,10,4,0,15,8],
+    [9,0,5,7,2,4,10,15,14,1,11,12,6,8,3,13],[2,12,6,10,0,11,8,3,4,13,7,5,15,14,1,9],
+    [12,5,1,15,14,13,4,10,0,7,6,3,9,2,8,11],[13,11,7,14,12,1,3,9,5,0,15,4,8,6,2,10],
+    [6,15,14,9,11,3,0,8,12,2,13,7,1,4,10,5],[10,2,8,4,7,6,1,5,15,11,9,14,3,12,13,0],
+  ];
+  function G(v,a,b,c,d,x,y){
+    v[a]=add64(v[a],v[b],x);v[d]=rotr64(v[d]^v[a],32);v[c]=add64(v[c],v[d]);v[b]=rotr64(v[b]^v[c],24);
+    v[a]=add64(v[a],v[b],y);v[d]=rotr64(v[d]^v[a],16);v[c]=add64(v[c],v[d]);v[b]=rotr64(v[b]^v[c],63);
+  }
+  function compress(h,m,t,last){
+    const v=[...h,...IV];
+    v[12]^=t&mask64; v[13]^=(t>>64n)&mask64; if(last)v[14]^=mask64;
+    for(let i=0;i<12;i++){
+      const s=SIGMA[i%10];
+      G(v,0,4,8,12,m[s[0]],m[s[1]]);G(v,1,5,9,13,m[s[2]],m[s[3]]);
+      G(v,2,6,10,14,m[s[4]],m[s[5]]);G(v,3,7,11,15,m[s[6]],m[s[7]]);
+      G(v,0,5,10,15,m[s[8]],m[s[9]]);G(v,1,6,11,12,m[s[10]],m[s[11]]);
+      G(v,2,7,8,13,m[s[12]],m[s[13]]);G(v,3,4,9,14,m[s[14]],m[s[15]]);
+    }
+    return h.map((hi,i)=>hi^v[i]^v[i+8]);
+  }
+  const padLen=Math.ceil(Math.max(data.length,1)/128)*128;
+  const padded=new Uint8Array(padLen); padded.set(data);
+  for(let i=0;i<padLen;i+=128){
+    const block=padded.slice(i,i+128), m=[];
+    const dv=new DataView(block.buffer,block.byteOffset);
+    for(let j=0;j<16;j++){const lo=BigInt(dv.getUint32(j*8,true)),hi=BigInt(dv.getUint32(j*8+4,true));m.push((hi<<32n)|lo);}
+    h=compress(h,m,BigInt(Math.min(i+128,data.length)),i+128>=padLen);
+  }
+  // Output 28 bytes (224 bit) little-endian
+  const out=new Uint8Array(28), dv=new DataView(out.buffer);
+  for(let i=0;i<3;i++){dv.setUint32(i*8,Number(h[i]&0xffffffffn),true);dv.setUint32(i*8+4,Number(h[i]>>32n),true);}
+  dv.setUint32(24,Number(h[3]&0xffffffffn),true);
+  return out;
+}
+
+function addDraft() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text) { document.getElementById('noteText').style.borderColor='var(--danger)'; return; }
+  document.getElementById('noteText').style.borderColor='';
+  const nftId = writeNftId || allNfts[0]?.policyId;
+  drafts.push({ text, encHex: encryptWithNft(text, nftId), nftId, time: new Date().toISOString() });
+  saveLocalStorage();
+  clearNote();
+  updateNavEntries();
+  renderCombinedJournal();
+}
+
+function removeDraft(i) {
+  drafts.splice(i,1);
+  saveLocalStorage();
+  updateNavEntries();
+  renderCombinedJournal();
+}
+
+function toggleDraftEnc(i) {
+  document.getElementById('draftEnc'+i).classList.toggle('show');
+}
+
+// Opdater write NFT indikator
+function updateWriteNftIndicator() {
+  const indicator = document.getElementById('writeNftIndicator');
+  if (!indicator) return;
+  if (allNfts.length > 1 && writeNftId) {
+    const nft = allNfts.find(n => n.policyId === writeNftId);
+    indicator.textContent = '⬡ '+esc(nft?.tokenName||'') + ' ▾';
+    indicator.style.display = 'inline';
+  } else {
+    indicator.style.display = 'none';
+  }
+}
+
+function updateSidebarDrafts() {
+  const sec = document.getElementById('sidebarDraftSec');
+  if (!sec) return;
+  if (!drafts.length) { sec.style.display='none'; return; }
+  sec.style.display='block';
+  document.getElementById('sidebarDraftCnt').textContent = drafts.length;
+  document.getElementById('sidebarDraftQ').innerHTML = drafts.slice(0,4).map(d=>`
+    <div class="draft-pill"><div class="draft-pill-txt">${esc(d.text.slice(0,38))}</div></div>`).join('');
+}
+
+// ── Send batch ────────────────────────────────────────────────────
+async function sendBatch() {
+  if (!drafts.length) return;
+  const btn = document.getElementById('sendBatchBtn');
+  btn.disabled = true;
+  document.getElementById('txConfirm').classList.remove('show');
+
+  try {
+    setStatus('Pakker '+drafts.length+' noter…','loading');
+    await sleep(150);
+
+    const notes = drafts.map(d => {
+      // Krypteret data som rå bytes, splittet i 64-byte chunks
+      const raw = h2b(d.encHex);
+      const chunks = [];
+      for (let i = 0; i < raw.length; i += 64) chunks.push(raw.slice(i, i + 64));
+      return chunks;
+    });
+    // Metadata struktur: { 1337: [ [chunk, chunk, ...], [chunk, chunk, ...], ... ] }
+    // Én liste per note, ingen string-nøgler — maksimal plads
+    const metaObj = { [METADATA_LABEL]: notes };
+
+    setStatus('Fetching UTxOs…','loading');
+
+    let utxo = null;
+    try {
+      const walletUtxos = await walletApi.getUtxos();
+      await reportError('getUtxos count:' + (walletUtxos?.length||0) + ' first:' + (walletUtxos?.[0]?.slice?.(0,16)||'none'), 'utxo-raw');
+      if (walletUtxos?.length) {
+        for (const raw of walletUtxos) {
+          try {
+            const u = decodeUtxoCbor(raw);
+            if (u) {
+              await reportError('decoded: lovelace='+u.lovelace+' hasTokens='+u.hasTokens+' addr='+u.address?.slice(0,20), 'utxo-parsed');
+            }
+            if (u && !u.hasTokens && u.lovelace >= 2000000n) {
+              if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
+            }
+          } catch(parseErr) {
+            await reportError('decode failed: '+parseErr.message+' raw[0..8]='+raw.slice(0,16), 'utxo-parse-err');
+            continue;
+          }
+        }
+      }
+    } catch(getErr) {
+      await reportError('getUtxos threw: '+getErr.message, 'utxo-get-err');
+    }
+
+    // Fallback til Blockfrost (Eternl)
+    if (!utxo) {
+      const utxos = await bfGet('addresses/'+walletAddr+'/utxos');
+      if (!utxos.length) throw new Error('No UTxOs found. Send ADA to your address first.');
+      const adaOnly = utxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
+      const pool = adaOnly.length > 0 ? adaOnly : utxos;
+      const found = pool.find(u => BigInt(u.amount.find(a=>a.unit==='lovelace').quantity) >= 2000000n);
+      if (!found) throw new Error('No pure-ADA UTxO with min. 2 ADA available.');
+      utxo = {
+        tx_hash: found.tx_hash, tx_index: found.tx_index,
+        lovelace: BigInt(found.amount.find(a=>a.unit==='lovelace').quantity),
+        address: walletAddr,
+      };
+    }
+    if (!utxo) throw new Error('No suitable UTxO found. Wait for previous transaction to confirm.');
+    await reportError('using UTxO: ' + utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' addr='+utxo.address?.slice(0,24)+' lovelace='+utxo.lovelace+' walletAddr='+walletAddr.slice(0,24), 'utxo-selected');
+
+    // Hent alle wallet adresser og find hvilken der matcher UTxO'en
+    // Vespr kan have mange adresser — vi skal bruge den rigtige til change output
+    let utxoOwnerAddr = utxo.address || walletAddr;
+    try {
+      const usedAddrs = await walletApi.getUsedAddresses();
+      const unusedAddrs = await walletApi.getUnusedAddresses();
+      const allAddrs = [...(usedAddrs||[]), ...(unusedAddrs||[])].map(a => {
+        try { return hexAddrToBech32(a, selectedNetwork==='preprod'?'addr_test':'addr'); } catch { return null; }
+      }).filter(Boolean);
+      await reportError('wallet addrs: '+allAddrs.slice(0,3).join(' | '), 'addr-debug');
+      // Find adresse der matcher UTxO
+      const match = allAddrs.find(a => a === utxo.address);
+      if (!match && allAddrs.length > 0) {
+        await reportError('UTxO addr mismatch! utxo='+utxo.address.slice(0,20)+' wallet[0]='+allAddrs[0].slice(0,20), 'addr-mismatch');
+      }
+    } catch(addrErr) {
+      await reportError('getAddresses err: '+addrErr.message, 'addr-err');
+    }
+
+    setStatus('Henter protokolparametre…','loading');
+    const params = await bfGet('epochs/latest/parameters');
+    const tip    = await bfGet('blocks/latest');
+
+    setStatus('Bygger transaktion…','loading');
+    const { inputs, outputs, fee: _fee, ttl, auxDataBytes, auxDataCbor, addrBytes } = buildTxParts(utxo, params, tip, metaObj);
+
+    // Beregn aux_data_hash
+    const auxHash = await blake2b256(auxDataBytes);
+
+    // Byg tx body med en foreløbig fee for at måle størrelsen
+    const minFeeA = BigInt(params.min_fee_a || 44);
+    const minFeeB = BigInt(params.min_fee_b || 155381);
+
+    function buildBody(fee) {
+      const ch = utxo.lovelace - fee;
+      if (ch < 1500000n) throw new Error('Not enough ADA. Need at least ~3 ADA in one UTxO.');
+      const addrHex = utxo.address ? bech32ToHex(utxo.address) : bech32ToHex(walletAddr);
+      const ab = h2b(addrHex);
+      const changeOut = cborArray([cborBytes(ab), cborUint(ch)]);
+      return encodeCborMap([
+        [cborUint(0), inputs],
+        [cborUint(1), cborArray([changeOut])],
+        [cborUint(2), cborUint(fee)],
+        [cborUint(3), cborUint(ttl)],
+        [cborUint(7), cborBytes(auxHash)],
+      ]);
+    }
+
+    // Iterér fee for at konvergere
+    let fee = minFeeA * 600n + minFeeB;
+    for (let i = 0; i < 3; i++) {
+      const bodyBytes = buildBody(fee);
+      // Estimér komplet tx størrelse: body + witness (1 vkey = ~105 bytes) + aux + overhead
+      const witnessDummy = 105;
+      const txSize = BigInt(bodyBytes.length + witnessDummy + auxDataBytes.length + 10);
+      fee = minFeeA * txSize + minFeeB + 500n; // +500 lovelace margin
+    }
+
+    const txBodyFinal = buildBody(fee);
+    // Frys body bytes HER — bruges til både signering og final tx
+    // Vigtigt: vi må ikke kalde buildBody igen, da CBOR encoding skal være identisk
+    const txBodyFinalHex = b2h(txBodyFinal);
+    const txBodyHash = await blake2b256(txBodyFinal);
+    await reportError('txbody hash='+b2h(txBodyHash).slice(0,16)+' fee='+fee+' size='+txBodyFinal.length, 'txbody-debug');
+    await reportError('txToSign first64='+b2h(cborArray([txBodyFinal,encodeCborMap([]),cborBool(true),auxDataBytes])).slice(0,64), 'txsign-debug');
+
+    // Byg komplet tx til signering
+    const txToSign = b2h(cborArray([
+      txBodyFinal,
+      encodeCborMap([]),
+      cborBool(true),
+      auxDataBytes
+    ]));
+
+    setStatus('Waiting for wallet signature…','loading');
+    let witnessCbor;
+    try {
+      witnessCbor = await walletApi.signTx(txToSign, true);
+    } catch(e) {
+      throw new Error('Signing rejected in ' + (selectedWalletId||'wallet') + ': ' + (e.info || e.message || JSON.stringify(e)));
+    }
+
+    await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
+
+    const witnessBytes = h2b(witnessCbor);
+    let finalTx;
+    if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
+      finalTx = witnessCbor;
+    } else {
+      finalTx = b2h(cborArray([
+        h2b(txBodyFinalHex),
+        witnessBytes,
+        cborBool(true),
+        auxDataBytes
+      ]));
+    }
+    await reportError('finalTx first='+finalTx.slice(0,64), 'finaltx-debug');
+
+    setStatus('Sending to Cardano…','loading');
+    let txHash;
+    try {
+      txHash = await walletApi.submitTx(finalTx);
+    } catch(walletSubmitErr) {
+      const rawMsg = walletSubmitErr.info||walletSubmitErr.message||JSON.stringify(walletSubmitErr);
+      reportError('walletSubmit failed: '+rawMsg, 'submit-wallet');
+      try {
+        txHash = await submitTx(finalTx);
+      } catch(bfErr) {
+        reportError(bfErr.message, 'submit-bf');
+        throw new Error(friendlySubmitError(bfErr.message));
+      }
+    }
+
+    const now = new Date().toISOString();
+    drafts.forEach((d,i) => {
+      savedEntries.unshift({ text:d.text, encHex:d.encHex, txHash, noteIndex:i, totalInBatch:drafts.length, time:d.time||now });
+    });
+    drafts = [];
+    saveLocalStorage();
+    updateSidebarDrafts();
+    renderCombinedJournal();
+    updateNavEntries();
+
+    setStatus('Sendt! Bekræftelse ~30 sek','ok');
+    document.getElementById('txHashVal').textContent = txHash;
+    const explorerUrl = NETWORKS[selectedNetwork].explorerTx + txHash;
+    document.getElementById('txExplorerLink').href = explorerUrl;
+    document.getElementById('txConfirm').classList.add('show');
+
+    // Cooldown: vent 60 sek før næste send for at undgå at bruge samme UTxO
+    let secs = 60;
+    const interval = setInterval(() => {
+      secs--;
+      btn.textContent = `Send til kæden (${secs}s)`;
+      if (secs <= 0) {
+        clearInterval(interval);
+        btn.textContent = 'Send til kæden';
+        btn.disabled = false;
+      }
+    }, 1000);
+    btn.textContent = `Send til kæden (${secs}s)`;
+    // btn forbliver disabled under cooldown
+
+  } catch(e) {
+    setStatus(e.message||'Ukendt fejl.','err');
+    btn.disabled = false;
+    reportError(e.message||'unknown', 'sendBatch');
+  }
+}
+
+// ── Cardano tx bygning ────────────────────────────────────────────
+// Returnerer tx body og aux data separat som hex strings.
+// Eternl's signTx returnerer kun witness set (a1 = CBOR map).
+// Vi samler den endelige tx selv: [body, witnesses, true, aux_data]
+
+function buildTxParts(utxo, params, tip, metaObj) {
+  const ttl = tip.slot + 7200;
+  const txHashBytes = h2b(utxo.tx_hash);
+  const input  = cborArray([cborBytes(txHashBytes), cborUint(utxo.tx_index)]);
+  const inputs = cborTag(258, cborArray([input]));
+
+  // aux data
+  const metaValue    = encodeCborValue(metaObj[METADATA_LABEL]);
+  const auxDataBytes = encodeCborMap([[cborUint(METADATA_LABEL), metaValue]]);
+  const auxDataCbor  = b2h(auxDataBytes);
+
+  return { inputs, ttl, auxDataBytes, auxDataCbor };
+}
+
+// Decode CIP-30 UTxO CBOR format: [txin, txout] = [[txhash, index], [address, value]]
+function decodeUtxoCbor(hexOrBytes) {
+  try {
+    const bytes = typeof hexOrBytes === 'string' ? h2b(hexOrBytes) : hexOrBytes;
+    // CIP-30 UTxO er [input, output] — vi har brug for input hash/index og output value
+    // Simpel scan: find 32-byte tx hash og lovelace value
+    let i = 0;
+    // Skip outer array header
+    if ((bytes[i] & 0xe0) === 0x80) i++;
+    // Inner array (txin): [[txhash_bytes(32), index]]
+    if ((bytes[i] & 0xe0) === 0x80) i++;
+    // txhash er bytes(32) = 0x58 0x20 + 32 bytes
+    if (bytes[i] === 0x58 && bytes[i+1] === 0x20) {
+      const txHash = b2h(bytes.slice(i+2, i+34));
+      i += 34;
+      // index
+      const index = bytes[i] & 0x1f; i++;
+      // txout: [address_bytes, lovelace] eller [address_bytes, [lovelace, tokens]]
+      if ((bytes[i] & 0xe0) === 0x80) i++; // array header
+      // address bytes
+      const addrLen = bytes[i] === 0x58 ? bytes[i+1] : bytes[i] === 0x59 ? (bytes[i+1]<<8|bytes[i+2]) : (bytes[i] & 0x1f);
+      const addrLenBytes = bytes[i] === 0x58 ? 2 : bytes[i] === 0x59 ? 3 : 1;
+      const addrBytes = bytes.slice(i + addrLenBytes, i + addrLenBytes + addrLen);
+      i += addrLenBytes + addrLen;
+      // value: lovelace uint eller [lovelace, multiasset]
+      let lovelace = 0n;
+      let hasTokens = false;
+      if ((bytes[i] & 0xe0) === 0x80) {
+        // [lovelace, multiasset]
+        hasTokens = true;
+        i++;
+        lovelace = decodeCborUint(bytes, i);
+      } else {
+        lovelace = decodeCborUint(bytes, i);
+      }
+      // Konverter adresse bytes til bech32
+      const addrPrefix = selectedNetwork === 'preprod' ? 'addr_test' : 'addr';
+      const address = hexAddrToBech32(b2h(addrBytes), addrPrefix);
+      return { tx_hash: txHash, tx_index: index, lovelace, hasTokens, address };
+    }
+  } catch {}
+  return null;
+}
+
+function decodeCborUint(bytes, i) {
+  const b = bytes[i];
+  if ((b & 0xe0) !== 0x00) return 0n;
+  const add = b & 0x1f;
+  if (add <= 23) return BigInt(add);
+  if (add === 24) return BigInt(bytes[i+1]);
+  if (add === 25) return BigInt((bytes[i+1]<<8)|bytes[i+2]);
+  if (add === 26) {
+    // Brug >>> 0 for at undgå signed 32-bit overflow
+    return BigInt(((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]) >>> 0);
+  }
+  if (add === 27) {
+    const hi = BigInt(((bytes[i+1]<<24)|(bytes[i+2]<<16)|(bytes[i+3]<<8)|bytes[i+4]) >>> 0);
+    const lo = BigInt(((bytes[i+5]<<24)|(bytes[i+6]<<16)|(bytes[i+7]<<8)|bytes[i+8]) >>> 0);
+    return (hi << 32n) | lo;
+  }
+  return 0n;
+}
+function bech32ToHex(bech32addr) {
+  // Find '1' separator
+  const sepIdx = bech32addr.lastIndexOf('1');
+  const data5bit = [];
+  for (let i = sepIdx + 1; i < bech32addr.length - 6; i++) {
+    const v = BECH32_CHARSET.indexOf(bech32addr[i]);
+    if (v < 0) throw new Error('Ugyldig bech32 tegn');
+    data5bit.push(v);
+  }
+  const bytes = convertBits(data5bit, 5, 8, false);
+  return b2h(new Uint8Array(bytes));
+}
+
+// ── Minimal CBOR encoder ──────────────────────────────────────────
+function cborUint(n) {
+  const v = BigInt(n);
+  if (v <= 23n) return new Uint8Array([Number(v)]);
+  if (v <= 0xffn) return new Uint8Array([0x18, Number(v)]);
+  if (v <= 0xffffn) return concat(new Uint8Array([0x19]), uint16be(Number(v)));
+  if (v <= 0xffffffffn) return concat(new Uint8Array([0x1a]), uint32be(Number(v)));
+  return concat(new Uint8Array([0x1b]), uint64be(v));
+}
+
+function cborBytes(bytes) {
+  return concat(cborLen(0x40, bytes.length), bytes);
+}
+
+function cborText(str) {
+  const b = new TextEncoder().encode(str);
+  return concat(cborLen(0x60, b.length), b);
+}
+
+function cborArray(items) {
+  const data = concatAll(items);
+  return concat(cborLen(0x80, items.length), data);
+}
+
+function cborMap(pairs) {
+  // pairs: [[key_bytes, val_bytes], ...]
+  return concat(cborLen(0xa0, pairs.length), concatAll(pairs.map(([k,v]) => concat(k,v))));
+}
+
+function cborBool(b) { return new Uint8Array([b ? 0xf5 : 0xf4]); }
+
+function cborTag(tag, val) {
+  // tag 258 = finite set
+  let tagBytes;
+  if (tag <= 23) tagBytes = new Uint8Array([0xc0 | tag]);
+  else if (tag <= 0xff) tagBytes = new Uint8Array([0xd8, tag]);
+  else tagBytes = concat(new Uint8Array([0xd9]), uint16be(tag));
+  return concat(tagBytes, val);
+}
+
+function cborLen(major, len) {
+  if (len <= 23) return new Uint8Array([major | len]);
+  if (len <= 0xff) return new Uint8Array([major | 24, len]);
+  if (len <= 0xffff) return concat(new Uint8Array([major | 25]), uint16be(len));
+  return concat(new Uint8Array([major | 26]), uint32be(len));
+}
+
+function encodeCborMap(pairs) {
+  // pairs: [[key_bytes, val_bytes], ...]
+  return concat(cborLen(0xa0, pairs.length), concatAll(pairs.map(([k,v]) => concat(k,v))));
+}
+
+function encodeCborValue(val) {
+  if (val === null || val === undefined) return new Uint8Array([0xf6]);
+  if (typeof val === 'boolean') return cborBool(val);
+  if (typeof val === 'number' || typeof val === 'bigint') return cborUint(val);
+  if (typeof val === 'string') return cborText(val);
+  if (Array.isArray(val)) {
+    const items = val.map(encodeCborValue);
+    return concat(cborLen(0x80, items.length), concatAll(items));
+  }
+  if (val instanceof Uint8Array) return cborBytes(val);
+  if (typeof val === 'object') {
+    const pairs = Object.entries(val);
+    return concat(cborLen(0xa0, pairs.length),
+      concatAll(pairs.map(([k,v]) => concat(cborText(k), encodeCborValue(v)))));
+  }
+  return new Uint8Array([0xf6]);
+}
+
+function encodeCborMetadata(val) {
+  return encodeCborValue(val);
+}
+
+function uint16be(n) { return new Uint8Array([(n>>8)&0xff, n&0xff]); }
+function uint32be(n) { return new Uint8Array([(n>>>24)&0xff,(n>>>16)&0xff,(n>>>8)&0xff,n&0xff]); }
+function uint64be(n) {
+  const hi = Number(n >> 32n), lo = Number(n & 0xffffffffn);
+  return new Uint8Array([...uint32be(hi), ...uint32be(lo)]);
+}
+function concat(a, b) { const r = new Uint8Array(a.length+b.length); r.set(a); r.set(b,a.length); return r; }
+function concatAll(arrs) { return arrs.reduce((a,b) => concat(a,b), new Uint8Array(0)); }
+async function sha256(bytes) {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+}
+
+// blake2b-256 — Cardano bruger denne til aux_data_hash
+// Implementering baseret på RFC 7693
+async function blake2b256(data) {
+  const IV = [
+    0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn,
+    0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+    0x510e527fade682d1n, 0x9b05688c2b3e6c1fn,
+    0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
+  ];
+  const SIGMA = [
+    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+    [14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+    [11,8,12,0,5,2,15,13,10,14,3,6,7,1,9,4],
+    [7,9,3,1,13,12,11,14,2,6,5,10,4,0,15,8],
+    [9,0,5,7,2,4,10,15,14,1,11,12,6,8,3,13],
+    [2,12,6,10,0,11,8,3,4,13,7,5,15,14,1,9],
+    [12,5,1,15,14,13,4,10,0,7,6,3,9,2,8,11],
+    [13,11,7,14,12,1,3,9,5,0,15,4,8,6,2,10],
+    [6,15,14,9,11,3,0,8,12,2,13,7,1,4,10,5],
+    [10,2,8,4,7,6,1,5,15,11,9,14,3,12,13,0],
+    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+    [14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+  ];
+  const mask64 = 0xffffffffffffffffn;
+  const rotr64 = (x, n) => ((x >> BigInt(n)) | (x << BigInt(64 - n))) & mask64;
+  const add64 = (...args) => args.reduce((a, b) => (a + b) & mask64);
+
+  function G(v, a, b, c, d, x, y) {
+    v[a] = add64(v[a], v[b], x);
+    v[d] = rotr64(v[d] ^ v[a], 32);
+    v[c] = add64(v[c], v[d]);
+    v[b] = rotr64(v[b] ^ v[c], 24);
+    v[a] = add64(v[a], v[b], y);
+    v[d] = rotr64(v[d] ^ v[a], 16);
+    v[c] = add64(v[c], v[d]);
+    v[b] = rotr64(v[b] ^ v[c], 63);
+  }
+
+  function compress(h, m, t, last) {
+    const v = [...h, ...IV];
+    v[12] ^= t & mask64;
+    v[13] ^= (t >> 64n) & mask64;
+    if (last) v[14] ^= mask64;
+    for (let i = 0; i < 12; i++) {
+      const s = SIGMA[i % 10];
+      G(v,0,4,8,12,  m[s[0]],m[s[1]]);
+      G(v,1,5,9,13,  m[s[2]],m[s[3]]);
+      G(v,2,6,10,14, m[s[4]],m[s[5]]);
+      G(v,3,7,11,15, m[s[6]],m[s[7]]);
+      G(v,0,5,10,15, m[s[8]],m[s[9]]);
+      G(v,1,6,11,12, m[s[10]],m[s[11]]);
+      G(v,2,7,8,13,  m[s[12]],m[s[13]]);
+      G(v,3,4,9,14,  m[s[14]],m[s[15]]);
+    }
+    return h.map((hi, i) => hi ^ v[i] ^ v[i + 8]);
+  }
+
+  // Parameter block: digest=32, key=0, fanout=1, depth=1
+  const p = new BigInt64Array(8);
+  const pBytes = new Uint8Array(p.buffer);
+  pBytes[0] = 32; pBytes[1] = 0; pBytes[2] = 1; pBytes[3] = 1;
+  const pWords = new DataView(pBytes.buffer);
+
+  let h = IV.map((v, i) => i === 0 ? v ^ (32n | (1n << 16n) | (1n << 24n)) : v);
+
+  // Pad input to multiple of 128 bytes
+  const padLen = Math.ceil(Math.max(data.length, 1) / 128) * 128;
+  const padded = new Uint8Array(padLen);
+  padded.set(data);
+
+  for (let i = 0; i < padLen; i += 128) {
+    const block = padded.slice(i, i + 128);
+    const m = [];
+    const dv = new DataView(block.buffer);
+    for (let j = 0; j < 16; j++) {
+      const lo = BigInt(dv.getUint32(j * 8, true));
+      const hi = BigInt(dv.getUint32(j * 8 + 4, true));
+      m.push((hi << 32n) | lo);
+    }
+    const t = BigInt(Math.min(i + 128, data.length));
+    const last = i + 128 >= padLen;
+    h = compress(h, m, t, last);
+  }
+
+  // Output: first 32 bytes of h (little-endian 64-bit words)
+  const out = new Uint8Array(32);
+  const outDv = new DataView(out.buffer);
+  for (let i = 0; i < 4; i++) {
+    outDv.setUint32(i * 8,     Number(h[i] & 0xffffffffn), true);
+    outDv.setUint32(i * 8 + 4, Number(h[i] >> 32n),       true);
+  }
+  return out;
+}
+
+// ── Bech32 encoder ────────────────────────────────────────────────
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+function bech32Polymod(values) {
+  const GEN = [0x3b6a57b2n, 0x26508e6dn, 0x1ea119fan, 0x3d4233ddn, 0x2a1462b3n];
+  let chk = 1n;
+  for (const v of values) {
+    const top = chk >> 25n;
+    chk = ((chk & 0x1ffffffn) << 5n) ^ BigInt(v);
+    for (let i = 0; i < 5; i++) if ((top >> BigInt(i)) & 1n) chk ^= GEN[i];
+  }
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const r = [];
+  for (const c of hrp) r.push(c.charCodeAt(0) >> 5);
+  r.push(0);
+  for (const c of hrp) r.push(c.charCodeAt(0) & 31);
+  return r;
+}
+
+function bech32CreateChecksum(hrp, data) {
+  const values = [...bech32HrpExpand(hrp), ...data, 0, 0, 0, 0, 0, 0];
+  const polymod = bech32Polymod(values) ^ 1n;
+  const result = [];
+  for (let i = 5; i >= 0; i--) result.push(Number((polymod >> BigInt(i * 5)) & 31n));
+  return result;
+}
+
+function bech32Encode(hrp, data) {
+  const checksum = bech32CreateChecksum(hrp, data);
+  const combined = [...data, ...checksum];
+  return hrp + '1' + combined.map(d => BECH32_CHARSET[d]).join('');
+}
+
+function convertBits(data, fromBits, toBits, pad = true) {
+  let acc = 0, bits = 0;
+  const result = [];
+  const maxv = (1 << toBits) - 1;
+  for (const value of data) {
+    acc = (acc << fromBits) | value;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >> bits) & maxv);
+    }
+  }
+  if (pad && bits > 0) result.push((acc << (toBits - bits)) & maxv);
+  return result;
+}
+
+function hexAddrToBech32(hex, prefix) {
+  // Hvis det allerede er bech32 (starter med prefix + '1'), returnér som-er
+  if (hex.startsWith(prefix + '1') || hex.startsWith('addr') || hex.startsWith('stake')) return hex;
+  const bytes = h2b(hex);
+  const converted = convertBits(Array.from(bytes), 8, 5);
+  return bech32Encode(prefix, converted);
+}
+
+
+// ── Blockfrost ────────────────────────────────────────────────────
+async function bfGet(path) {
+  const base = NETWORKS[selectedNetwork].bfBase;
+  const res = await fetch(base+'/'+path, {
+    headers: { 'project_id': bfKey }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error('Blockfrost: '+(err.message||res.status));
+  }
+  return res.json();
+}
+
+function friendlySubmitError(raw) {
+  const s = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  if (s.includes('InvalidWitnessesUTXOW')) {
+    return 'Signing failed: your wallet does not own the funds at this address. '
+      + 'The ADA in your wallet was likely sent from another wallet — '
+      + 'please send some ADA from a faucet or from another transaction originating in this wallet, then try again.';
+  }
+  if (s.includes('ValueNotConserved')) return 'Transaction fee calculation error — please try again.';
+  if (s.includes('BadInputsUTxO')) return 'UTxO already spent — please wait for your previous transaction to confirm.';
+  if (s.includes('OutsideValidityIntervalUTxO')) return 'Transaction expired — please try again.';
+  return s.length > 200 ? s.slice(0, 200) + '…' : s;
+}
+
+async function submitViaEternl(txCbor) {
+  try {
+    const txHash = await walletApi.submitTx(txCbor);
+    return txHash;
+  } catch(e) {
+    const raw = e.info || e.message || JSON.stringify(e);
+    throw new Error(friendlySubmitError(raw));
+  }
+}
+
+async function submitTx(signedCbor) {
+  const base = NETWORKS[selectedNetwork].bfBase;
+  const res = await fetch(base+'/tx/submit', {
+    method: 'POST',
+    headers: { 'project_id': bfKey, 'Content-Type': 'application/cbor' },
+    body: h2b(signedCbor)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(friendlySubmitError(JSON.stringify(err)));
+  }
+  return (await res.text()).replace(/"/g,'');
+}
+
+// ── Hent og vis noter fra kæden ───────────────────────────────────
+async function loadEntries() {
+  const container = document.getElementById('entriesList');
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:1rem 0"><div class="spinner"></div> Loading from chain…</div>';
+
+  try {
+    // Byg liste af adresser der skal søges på
+    const searchAddrs = new Set([walletAddr]);
+
+    // Hent cachede from-adresser fra localStorage
+    const cacheKey = 'kl_fromaddrs_'+selectedNetwork+'_'+walletAddr;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+      cached.forEach(a => searchAddrs.add(a));
+    } catch {}
+
+    // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
+    try {
+      for (let page = 1; page <= 3; page++) {
+        const items = await bfGet('metadata/txs/labels/1338?order=desc&count=100&page='+page);
+        if (!items.length) break;
+        let found = false;
+        for (const item of items) {
+          try {
+            const m = item.json_metadata;
+            if (!m?.from) continue;
+            const raw = m.from;
+            const hexStr = Array.isArray(raw)
+              ? raw.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+              : (typeof raw==='string' ? raw.replace(/^0x/i,'') : '');
+            if (hexStr) {
+              const addrPrefix = selectedNetwork==='preprod' ? 'addr_test' : 'addr';
+              const fromAddr = hexAddrToBech32(hexStr, addrPrefix);
+              searchAddrs.add(fromAddr);
+              found = true;
+            }
+          } catch { continue; }
+        }
+        if (items.length < 100) break;
+      }
+      // Gem opdaterede from-adresser
+      try { localStorage.setItem(cacheKey, JSON.stringify([...searchAddrs].filter(a => a !== walletAddr))); } catch {}
+    } catch {}
+
+
+    const found = [];
+    const seenTx = new Set();
+
+    for (const addr of searchAddrs) {
+      try {
+        const txs = await bfGet('addresses/'+addr+'/transactions?order=desc&count=100');
+        for (const tx of txs) {
+          if (seenTx.has(tx.tx_hash)) continue;
+          seenTx.add(tx.tx_hash);
+          try {
+            const metas = await bfGet('txs/'+tx.tx_hash+'/metadata');
+            const our = metas.find(m => parseInt(m.label) === METADATA_LABEL);
+            if (!our) continue;
+            const data = our.json_metadata;
+            if (data === null || data === undefined) continue;
+
+            let notesList = [];
+            if (Array.isArray(data)) notesList = data.map(chunks => ({ d: chunks }));
+            else if (data?.v === 1 && Array.isArray(data.notes)) notesList = data.notes;
+            else if (data?.v === 1 && Array.isArray(data.d)) notesList = [{ d: data.d }];
+            else continue;
+
+            notesList.forEach((note, idx) => {
+              if (!Array.isArray(note.d)) return;
+              const encHex = note.d.map(chunk => {
+                if (typeof chunk === 'string') return chunk.replace(/^0x/, '');
+                if (chunk?.bytes) return chunk.bytes;
+                return '';
+              }).join('');
+              if (!encHex) return;
+              const result = decryptHexMulti(encHex);
+              if (!result) return;
+              found.push({
+                text: result.text, encHex,
+                nftId: result.nftId, txHash: tx.tx_hash,
+                noteIndex: idx, totalInBatch: notesList.length,
+                time: new Date(tx.block_time * 1000).toISOString()
+              });
+            });
+          } catch { continue; }
+        }
+      } catch { continue; }
+    }
+
+    // Sorter nyeste først
+    found.sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    // Tilføj lokalt gemte der ikke er på kæden endnu
+    const onChain = new Set(found.map(e => e.txHash+'_'+e.noteIndex));
+    for (const e of savedEntries) {
+      if (!onChain.has(e.txHash+'_'+(e.noteIndex||0))) found.unshift(e);
+    }
+
+    savedEntries = found;
+    saveLocalStorage();
+    updateNavEntries();
+
+    const visible = found.filter(e => !e.nftId || activeNftIds.has(e.nftId));
+    renderEntries(visible);
+    const total = found.length;
+    const shown = visible.length;
+    document.getElementById('entryCount').textContent =
+      shown === total ? total+(total===1?' entry':' entries')
+                      : shown+' / '+total+(total===1?' entry':' entries');
+
+  } catch(e) {
+    if (savedEntries.length) {
+      const visible = savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId));
+      renderEntries(visible);
+      document.getElementById('entryCount').textContent = visible.length+' (local cache)';
+    } else {
+      container.innerHTML = `<div class="empty-state"><span style="color:var(--danger)">${esc(e.message)}</span></div>`;
+    }
+  }
+}
+
+const isTxHash = h => typeof h === 'string' && /^[0-9a-f]{64}$/.test(h);
+
+// Byg den kombinerede journal: kladder (unsent) + kæde-noter blandet kronologisk
+async function renderCombinedJournal() {
+  updateWriteNftIndicator();
+  updateSidebarDrafts();
+  // Vis kladder øjeblikkeligt fra lokalt lager
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+
+  // Kombiner og sorter
+  const combined = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+  combined.sort((a,b) => new Date(b.time) - new Date(a.time));
+
+  renderEntries(combined);
+
+  // Opdater send-bar
+  updateSendBar();
+
+  // Hent kæde-noter i baggrunden og opdater
+  if (walletAddr && bfKey) {
+    try {
+      await loadEntries();
+      const fresh = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+      fresh.sort((a,b) => new Date(b.time) - new Date(a.time));
+      const q = document.getElementById('searchInput')?.value?.trim()?.toLowerCase() || '';
+      renderEntries(q ? fresh.filter(e=>e.text.toLowerCase().includes(q)) : fresh);
+      updateSendBar();
+    } catch {}
+  }
+}
+
+function updateSendBar() {
+  const bar = document.getElementById('sendBarInline');
+  const countEl = document.getElementById('sendBarCount');
+  const sizeBar = document.getElementById('sizeBarFill');
+  if (!bar) return;
+  if (!drafts.length) { bar.style.display='none'; return; }
+  bar.style.display = 'flex';
+  countEl.textContent = drafts.length + (drafts.length===1?' unsent':' unsent');
+  // Størrelse indikator
+  const totalBytes = drafts.reduce((s,d)=>s+d.encHex.length/2,0);
+  const pct = Math.min(100, (totalBytes/14000)*100);
+  if (sizeBar) sizeBar.style.width = pct+'%';
+}
+
+function renderEntries(entries) {
+  const el = document.getElementById('entriesList');
+  if (!entries.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">◌</div><em>Nothing written yet.</em><div style="margin-top:8px;font-size:12px;opacity:.6">Your entries will appear here.</div></div>`;
+    return;
+  }
+  el.innerHTML = entries.map((e,i) => {
+    const date    = new Date(e.time).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const preview = e.text.length > 220 ? e.text.slice(0,220).trimEnd()+'…' : null;
+    const batch   = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
+    const nftTag  = e.nftId === '__legacy__'
+      ? `<span class="batch-tag" style="color:var(--danger);opacity:.7">legacy</span>`
+      : allNfts.length > 1 && e.nftId && !e.isDraft
+        ? `<span class="batch-tag" style="color:var(--accent)">⬡ ${esc(allNfts.find(n=>n.policyId===e.nftId)?.tokenName||'')}</span>`
+        : '';
+    const unsentBadge = e.isDraft
+      ? `<span class="unsent-badge">device only</span>`
+      : '';
+    const actions = e.isDraft
+      ? `<button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')"
+           style="color:var(--danger);opacity:.7;padding:4px 8px;border:1px solid rgba(192,84,58,.2);border-radius:4px;font-size:9px">
+           ✕ remove
+         </button>`
+      : `<button class="toggle-btn" onclick="event.stopPropagation();toggleEnc(${i})" id="encBtn${i}">encrypted</button>
+         ${isTxHash(e.txHash)?`<a href="${NETWORKS[selectedNetwork].explorerTx}${e.txHash}" target="_blank" onclick="event.stopPropagation()" class="toggle-btn">tx ↗</a>`:''}`;
+    return `<div class="entry-card${e.isDraft?' entry-unsent':''}" id="ec${i}" onclick="toggleEntry(${i})">
+      <div class="entry-head">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px">
+          <span class="entry-time">${date}</span>${batch}${nftTag}${unsentBadge}
+        </div>
+        <div class="entry-actions">${actions}</div>
+      </div>
+      ${preview
+        ? `<div class="entry-text-preview" id="ep${i}">${esc(preview)}</div>
+           <div class="entry-full-text" id="ef${i}">${esc(e.text)}</div>`
+        : `<div class="entry-text">${esc(e.text)}</div>`
+      }
+      ${!e.isDraft ? `<div class="entry-enc" id="ee${i}">${e.encHex}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const total = entries.length;
+  const unsent = entries.filter(e=>e.isDraft).length;
+  document.getElementById('entryCount').textContent =
+    unsent > 0 ? `${total} entries · ${unsent} unsent` : `${total} ${total===1?'entry':'entries'}`;
+}
+
+function removeDraftByTime(time) {
+  const idx = drafts.findIndex(d => d.time === time);
+  if (idx !== -1) {
+    drafts.splice(idx, 1);
+    saveLocalStorage();
+    updateNavEntries();
+    renderCombinedJournal();
+  }
+}
+
+function toggleEntry(i) {
+  const card    = document.getElementById('ec'+i);
+  const preview = document.getElementById('ep'+i);
+  if (!preview) return;
+  card.classList.toggle('entry-expanded');
+}
+
+function filterEntries() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+  const base = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
+  base.sort((a,b) => new Date(b.time) - new Date(a.time));
+  const filtered = q ? base.filter(e => e.text.toLowerCase().includes(q)) : base;
+  renderEntries(filtered);
+}
+
+function toggleEnc(i) {
+  const enc = document.getElementById('ee'+i);
+  const btn = document.getElementById('encBtn'+i);
+  enc.classList.toggle('show');
+  if (btn) btn.textContent = enc.classList.contains('show') ? 'skjul' : 'krypteret';
+}
+
+let navPage = 0;
+const NAV_PAGE_SIZE = 50;
+
+function updateNavEntries() {
+  navPage = 0;
+  const el = document.getElementById('navEntries');
+  const draftEntries = drafts.map(d => ({ ...d, isDraft: true }));
+  const allEntries = [...draftEntries, ...savedEntries];
+  if (!allEntries.length) {
+    el.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</div>';
+    return;
+  }
+  renderNavPage(el, true, allEntries);
+  el.onscroll = () => {
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+      if ((navPage + 1) * NAV_PAGE_SIZE < allEntries.length) {
+        navPage++;
+        renderNavPage(el, false, allEntries);
+      }
+    }
+  };
+}
+
+function renderNavPage(el, reset, allEntries) {
+  if (!allEntries) {
+    allEntries = [...drafts.map(d=>({...d,isDraft:true})), ...savedEntries];
+  }
+  const start = navPage * NAV_PAGE_SIZE;
+  const slice = allEntries.slice(start, start + NAV_PAGE_SIZE);
+  const sentinel = el.querySelector('.nav-sentinel');
+  if (sentinel) sentinel.remove();
+
+  const html = slice.map((e, i) => {
+    const idx = start + i;
+    const date = new Date(e.time).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
+    const dot = e.isDraft
+      ? `<span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--accent);opacity:.6;margin-left:5px;vertical-align:middle"></span>`
+      : '';
+    return `<div class="nav-entry" onclick="jumpToEntry(${idx},${e.isDraft||false})">
+      <div class="nav-entry-date">${date}${dot}</div>
+      <div class="nav-entry-preview">${esc(e.text.slice(0,52))}</div>
+    </div>`;
+  }).join('');
+
+  if (reset) { el.innerHTML = html; } else { el.insertAdjacentHTML('beforeend', html); }
+  if ((navPage + 1) * NAV_PAGE_SIZE < allEntries.length) {
+    el.insertAdjacentHTML('beforeend', '<div class="nav-sentinel" style="height:1px"></div>');
+  }
+}
+
+function jumpToEntry(idx, isDraft) {
+  if (isDraft) {
+    showScreen('write');
+    setTimeout(() => {
+      const card = document.getElementById('draftsList')?.children[idx - (savedEntries.length ? 0 : 0)];
+    }, 100);
+    return;
+  }
+  showScreen('read');
+  setTimeout(() => {
+    const realIdx = idx - drafts.length;
+    const card = document.getElementById('ec'+realIdx);
+    if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 100);
+}
+
+// ── Local storage ─────────────────────────────────────────────────
+function saveLocalStorage() {
+  try {
+    const key = selectedNetwork+'_'+walletAddr;
+    localStorage.setItem('kl_drafts_'+key,  JSON.stringify(drafts));
+    localStorage.setItem('kl_entries_'+key, JSON.stringify(savedEntries));
+  } catch {}
+}
+
+function loadLocalStorage() {
+  try {
+    const key = selectedNetwork+'_'+walletAddr;
+    const d = localStorage.getItem('kl_drafts_'+key);
+    const e = localStorage.getItem('kl_entries_'+key);
+    // Ryd ved skift — sæt til tom hvis ingen cache for denne wallet
+    drafts       = d ? JSON.parse(d) : [];
+    savedEntries = e ? JSON.parse(e) : [];
+    updateNavEntries();
+    updateSidebarDrafts();
+    renderCombinedJournal();
+  } catch {}
+}
+
+// Render wallet picker når extensions er injiceret (~100ms efter load)
+window.addEventListener('load', () => setTimeout(renderWalletPicker, 150));
+
+</script>
+</body>
+</html>
