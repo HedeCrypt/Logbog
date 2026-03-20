@@ -1577,7 +1577,7 @@ async function mintJournalNFT() {
     // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser (korrekt for HD wallets)
     try {
       const walletUtxos = await walletApi.getUtxos();
-      await reportError('mint getUtxos count:'+(walletUtxos?.length||0), 'mint-utxo-raw');
+      await reportError('mint getUtxos count:'+(walletUtxos?.length||0)+' raw0='+walletUtxos?.[0]?.slice(0,32), 'mint-utxo-raw');
       if (walletUtxos?.length) {
         for (const raw of walletUtxos) {
           try {
