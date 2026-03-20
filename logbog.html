@@ -1572,24 +1572,50 @@ async function mintJournalNFT() {
     const encPrivKey = encryptNFTKey(privKey);
 
     setMintStatus('Fetching UTxOs…');
-    let utxos;
+    let utxo = null;
+
+    // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser (korrekt for HD wallets)
     try {
-      utxos = await bfGet('addresses/'+walletAddr+'/utxos');
-    } catch(e) {
-      if (e.message?.includes('not been found') || e.message?.includes('404')) {
-        throw new Error('This wallet has no transaction history on chain yet. Send some tADA to your address first, then try again.');
+      const walletUtxos = await walletApi.getUtxos();
+      await reportError('mint getUtxos count:'+(walletUtxos?.length||0), 'mint-utxo-raw');
+      if (walletUtxos?.length) {
+        for (const raw of walletUtxos) {
+          try {
+            const u = decodeUtxoCbor(raw);
+            if (u && !u.hasTokens && u.lovelace >= 3000000n) {
+              if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
+            }
+          } catch { continue; }
+        }
       }
-      throw e;
+    } catch(e) {
+      await reportError('mint getUtxos err:'+e.message, 'mint-utxo-err');
     }
-    if (!utxos.length) throw new Error('No UTxOs found. Send tADA to your address from the Cardano faucet first.');
-    // Brug kun rene ADA UTxOs — undgå at røre eksisterende tokens
-    const adaOnly = utxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
-    const utxoPool = adaOnly.length > 0 ? adaOnly : utxos;
-    const utxo = utxoPool.find(u => {
-      const lv = u.amount.find(a=>a.unit==='lovelace');
-      return lv && BigInt(lv.quantity) >= 3000000n;
-    });
-    if (!utxo) throw new Error('Need at least 3 ADA in a single pure-ADA UTxO to mint.');
+
+    // Fallback til Blockfrost
+    if (!utxo) {
+      let bfUtxos;
+      try {
+        bfUtxos = await bfGet('addresses/'+walletAddr+'/utxos');
+      } catch(e) {
+        if (e.message?.includes('not been found') || e.message?.includes('404')) {
+          throw new Error('This wallet has no transaction history on chain yet. Send some tADA to your address first.');
+        }
+        throw e;
+      }
+      if (!bfUtxos.length) throw new Error('No UTxOs found. Send tADA to your address from the Cardano faucet first.');
+      const adaOnly = bfUtxos.filter(u => u.amount.length === 1 && u.amount[0].unit === 'lovelace');
+      const pool = adaOnly.length > 0 ? adaOnly : bfUtxos;
+      const found = pool.find(u => BigInt(u.amount.find(a=>a.unit==='lovelace').quantity) >= 3000000n);
+      if (!found) throw new Error('Need at least 3 ADA in a single pure-ADA UTxO to mint.');
+      utxo = {
+        tx_hash: found.tx_hash, tx_index: found.tx_index,
+        lovelace: BigInt(found.amount.find(a=>a.unit==='lovelace').quantity),
+        address: walletAddr,
+      };
+    }
+    if (!utxo) throw new Error('No suitable UTxO found for minting.');
+    await reportError('mint using UTxO:'+utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' lovelace='+utxo.lovelace+' addr='+utxo.address?.slice(0,20), 'mint-utxo-sel');
 
     const params = await bfGet('epochs/latest/parameters');
     const tip    = await bfGet('blocks/latest');
@@ -1699,15 +1725,18 @@ function chunkBytes(bytes, size) {
 
 // ── Byg mint transaktion ──────────────────────────────────────────
 async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata) {
-  const lovelace   = BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
-  // TTL og lockSlot: policy udløber efter TTL så ingen kan genbruge scriptet
+  // Håndter både CIP-30 format (lovelace som BigInt) og Blockfrost format (amount array)
+  const lovelace = utxo.lovelace !== undefined
+    ? BigInt(utxo.lovelace)
+    : BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
   const ttl        = tip.slot + 600;
   const minFeeA    = BigInt(params.min_fee_a || 44);
   const minFeeB    = BigInt(params.min_fee_b || 155381);
-  const minUtxoAda = 2000000n; // 2 ADA for NFT UTxO
+  const minUtxoAda = 2000000n;
 
-  const addrHex     = bech32ToHex(walletAddr);
-  const addrBytes   = h2b(addrHex);
+  // Brug UTxO's egen adresse hvis tilgængelig — vigtigt for HD wallets
+  const addrHex   = bech32ToHex(utxo.address || walletAddr);
+  const addrBytes = h2b(addrHex);
   const txHashBytes = h2b(utxo.tx_hash);
 
   const input  = cborArray([cborBytes(txHashBytes), cborUint(utxo.tx_index)]);
