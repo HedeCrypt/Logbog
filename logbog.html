@@ -1691,30 +1691,27 @@ async function mintJournalNFT() {
 
 // Hent payment key hash fra wallet adresse
 async function getPaymentKeyHash() {
-  // Forsøg at hente den faktiske signing key fra wallet via signData
-  // Dette giver os den nøgle wallet'en rent faktisk bruger — ikke hvad der er i adressen
-  // Nødvendigt for Vespr som kan bruge en anden key path end adressen antyder
+  // CIP-30 signData returnerer COSE_Sign1 med { signature, key }
+  // key er COSE_Key — men Vespr sætter staking key her, ikke payment key
+  // Prøv i stedet at udlede fra signature's protected header som indeholder "address"
+  // Og som fallback, hent pkh direkte fra wallet's changeAddress
   try {
-    const dummyMsg = '48656465';  // "Hede" i hex — minimal besked
-    const signResult = await walletApi.signData(walletAddr, dummyMsg);
-    // signResult er COSE_Sign1 — udtræk public key fra protected header eller key field
-    if (signResult?.key) {
-      // CIP-30 returnerer { signature, key } — key er COSE_Key
-      const keyBytes = h2b(signResult.key);
-      // COSE_Key: find -2 (x coordinate = 32 bytes public key)
-      // Enkel scan: find 0x5820 pattern (bytes(32))
-      for (let i = 0; i < keyBytes.length - 33; i++) {
-        if (keyBytes[i] === 0x58 && keyBytes[i+1] === 0x20) {
-          const pubKey = keyBytes.slice(i+2, i+34);
-          const pkh = await blake2b224(pubKey);
-          await reportError('pkh from signData key: '+b2h(pkh).slice(0,16), 'pkh-debug');
-          return b2h(pkh);
-        }
-      }
+    // getChangeAddress returnerer den adresse wallet'en bruger til change — 
+    // og dens payment key hash er den nøgle wallet'en bruger til signTx
+    const changeAddrHex = await walletApi.getChangeAddress();
+    if (changeAddrHex) {
+      const addrPrefix = selectedNetwork === 'preprod' ? 'addr_test' : 'addr';
+      const changeAddr = hexAddrToBech32(changeAddrHex, addrPrefix);
+      const changeAddrBytes = h2b(bech32ToHex(changeAddr));
+      const pkhHex = b2h(changeAddrBytes.slice(1, 29));
+      await reportError('pkh from changeAddr='+changeAddr.slice(0,20)+' pkh='+pkhHex.slice(0,16), 'pkh-change');
+      return pkhHex;
     }
-  } catch {}
+  } catch(e) {
+    await reportError('getChangeAddress failed: '+e.message, 'pkh-change-err');
+  }
 
-  // Fallback: udled fra adresse bytes (virker for Eternl)
+  // Fallback: adresse bytes
   const addrHex = bech32ToHex(walletAddr);
   const addrBytes = h2b(addrHex);
   return b2h(addrBytes.slice(1, 29));
