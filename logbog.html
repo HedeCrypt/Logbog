@@ -678,28 +678,13 @@ function renderWalletPicker() {
 }
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
+
+// Fejlrapportering — deaktiveret i produktion
+function reportError() {}
+
 const DEV_BF_KEYS = { preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F' };
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
-// Sender fejl til ntfy.sh så de kan ses på mobil uden at kopiere tekst
-// Kanal: hedelog-errors — åbn https://ntfy.sh/hedelog-errors for at se dem
-const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
-async function reportError(msg, context) {
-  try {
-    const info = [
-      context || '',
-      msg,
-      'wallet:' + (selectedWalletId||'?'),
-      'net:' + selectedNetwork,
-      new Date().toISOString()
-    ].filter(Boolean).join(' | ');
-    await fetch('https://ntfy.sh/' + DEV_ERROR_TOPIC, {
-      method: 'POST',
-      body: info,
-      headers: { 'Title': 'HedeLog error', 'Priority': context?.includes('debug') ? '2' : '4' }
-    });
-  } catch {}
-}
 
 function selectNetwork(net) {
   selectedNetwork = net;
@@ -1577,13 +1562,11 @@ async function mintJournalNFT() {
     // Forsøg CIP-30 getUtxos — returnerer UTxOs fra alle wallet-adresser (korrekt for HD wallets)
     try {
       const walletUtxos = await walletApi.getUtxos();
-      await reportError('mint getUtxos count:'+(walletUtxos?.length||0)+' raw0='+walletUtxos?.[0]?.slice(0,32), 'mint-utxo-raw');
       if (walletUtxos?.length) {
         for (const raw of walletUtxos) {
           try {
             const u = decodeUtxoCbor(raw);
             if (u) {
-              await reportError('parsed: '+u.tx_hash.slice(0,8)+'@'+u.tx_index+' idx_type='+typeof u.tx_index+' raw_start='+raw.slice(0,16), 'utxo-crosscheck');
             }
             if (u && !u.hasTokens && u.lovelace >= 3000000n) {
               if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
@@ -1592,7 +1575,6 @@ async function mintJournalNFT() {
         }
       }
     } catch(e) {
-      await reportError('mint getUtxos err:'+e.message, 'mint-utxo-err');
     }
 
     // Fallback til Blockfrost
@@ -1618,7 +1600,6 @@ async function mintJournalNFT() {
       };
     }
     if (!utxo) throw new Error('No suitable UTxO found for minting.');
-    await reportError('mint using UTxO:'+utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' lovelace='+utxo.lovelace+' addr='+utxo.address?.slice(0,20), 'mint-utxo-sel');
 
     const params = await bfGet('epochs/latest/parameters');
     const tip    = await bfGet('blocks/latest');
@@ -1720,14 +1701,12 @@ async function getPaymentKeyHash() {
             const pubKey = vkeyBytes.slice(i+2, i+34);
             const pkh = await blake2b224(pubKey);
             const pkhHex = b2h(pkh);
-            await reportError('pkh from chain tx: '+pkhHex.slice(0,16)+' vkey='+b2h(pubKey).slice(0,16), 'pkh-chain');
             return pkhHex;
           }
         }
       } catch { continue; }
     }
   } catch(e) {
-    await reportError('chain pkh lookup failed: '+e.message, 'pkh-chain-err');
   }
 
   // Fallback: adresse bytes
@@ -1835,7 +1814,6 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   // Native script tilføjes bagefter inden submit
   const txBodyFinalHex = b2h(txBodyFinal);
   const txBodyHash = await blake2b256(txBodyFinal);
-  await reportError('mint txbody='+txBodyFinalHex.slice(0,64)+' hash='+b2h(txBodyHash).slice(0,16), 'mint-body');
 
   const txForSigning = b2h(cborArray([
     txBodyFinal,
@@ -1856,7 +1834,6 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
       if (wb[i] === 0x58 && wb[i+1] === 0x20) { vkey = b2h(wb.slice(i+2, i+34)); break; }
     }
     const pkh = await getPaymentKeyHash();
-    await reportError('mint vkey='+vkey.slice(0,16)+' pkh='+pkh.slice(0,16), 'mint-keymatch');
   } catch {}
 
 
@@ -1908,7 +1885,6 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   }
 
   const finalTx = b2h(cborArray([h2b(txBodyFinalHex), finalWitness, cborBool(true), auxDataBytes]));
-  await reportError('mint finalTx='+finalTx.slice(0,64), 'mint-finaltx');
   return finalTx;
 }
 
@@ -2378,25 +2354,21 @@ async function sendBatch() {
     let utxo = null;
     try {
       const walletUtxos = await walletApi.getUtxos();
-      await reportError('getUtxos count:' + (walletUtxos?.length||0) + ' first:' + (walletUtxos?.[0]?.slice?.(0,16)||'none'), 'utxo-raw');
       if (walletUtxos?.length) {
         for (const raw of walletUtxos) {
           try {
             const u = decodeUtxoCbor(raw);
             if (u) {
-              await reportError('decoded: lovelace='+u.lovelace+' hasTokens='+u.hasTokens+' addr='+u.address?.slice(0,20), 'utxo-parsed');
             }
             if (u && !u.hasTokens && u.lovelace >= 2000000n) {
               if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
             }
           } catch(parseErr) {
-            await reportError('decode failed: '+parseErr.message+' raw[0..8]='+raw.slice(0,16), 'utxo-parse-err');
             continue;
           }
         }
       }
     } catch(getErr) {
-      await reportError('getUtxos threw: '+getErr.message, 'utxo-get-err');
     }
 
     // Fallback til Blockfrost (Eternl)
@@ -2414,7 +2386,6 @@ async function sendBatch() {
       };
     }
     if (!utxo) throw new Error('No suitable UTxO found. Wait for previous transaction to confirm.');
-    await reportError('using UTxO: ' + utxo.tx_hash.slice(0,12)+'@'+utxo.tx_index+' addr='+utxo.address?.slice(0,24)+' lovelace='+utxo.lovelace+' walletAddr='+walletAddr.slice(0,24), 'utxo-selected');
 
     // Hent alle wallet adresser og find hvilken der matcher UTxO'en
     // Vespr kan have mange adresser — vi skal bruge den rigtige til change output
@@ -2425,14 +2396,11 @@ async function sendBatch() {
       const allAddrs = [...(usedAddrs||[]), ...(unusedAddrs||[])].map(a => {
         try { return hexAddrToBech32(a, selectedNetwork==='preprod'?'addr_test':'addr'); } catch { return null; }
       }).filter(Boolean);
-      await reportError('wallet addrs: '+allAddrs.slice(0,3).join(' | '), 'addr-debug');
       // Find adresse der matcher UTxO
       const match = allAddrs.find(a => a === utxo.address);
       if (!match && allAddrs.length > 0) {
-        await reportError('UTxO addr mismatch! utxo='+utxo.address.slice(0,20)+' wallet[0]='+allAddrs[0].slice(0,20), 'addr-mismatch');
       }
     } catch(addrErr) {
-      await reportError('getAddresses err: '+addrErr.message, 'addr-err');
     }
 
     setStatus('Henter protokolparametre…','loading');
@@ -2479,8 +2447,6 @@ async function sendBatch() {
     // Vigtigt: vi må ikke kalde buildBody igen, da CBOR encoding skal være identisk
     const txBodyFinalHex = b2h(txBodyFinal);
     const txBodyHash = await blake2b256(txBodyFinal);
-    await reportError('txbody hash='+b2h(txBodyHash).slice(0,16)+' fee='+fee+' size='+txBodyFinal.length, 'txbody-debug');
-    await reportError('txToSign first64='+b2h(cborArray([txBodyFinal,encodeCborMap([]),cborBool(true),auxDataBytes])).slice(0,64), 'txsign-debug');
 
     // Byg komplet tx til signering
     const txToSign = b2h(cborArray([
@@ -2498,7 +2464,6 @@ async function sendBatch() {
       throw new Error('Signing rejected in ' + (selectedWalletId||'wallet') + ': ' + (e.info || e.message || JSON.stringify(e)));
     }
 
-    await reportError('witness hex='+witnessCbor.slice(0,64), 'witness-raw');
 
     const witnessBytes = h2b(witnessCbor);
     let finalTx;
@@ -2512,7 +2477,6 @@ async function sendBatch() {
         auxDataBytes
       ]));
     }
-    await reportError('finalTx first='+finalTx.slice(0,64), 'finaltx-debug');
 
     setStatus('Sending to Cardano…','loading');
     let txHash;
@@ -2520,11 +2484,9 @@ async function sendBatch() {
       txHash = await walletApi.submitTx(finalTx);
     } catch(walletSubmitErr) {
       const rawMsg = walletSubmitErr.info||walletSubmitErr.message||JSON.stringify(walletSubmitErr);
-      reportError('walletSubmit failed: '+rawMsg, 'submit-wallet');
       try {
         txHash = await submitTx(finalTx);
       } catch(bfErr) {
-        reportError(bfErr.message, 'submit-bf');
         throw new Error(friendlySubmitError(bfErr.message));
       }
     }
