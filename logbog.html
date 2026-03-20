@@ -346,7 +346,12 @@
         <div id="bfKeyMissing" class="err-box" style="display:none">
           No Blockfrost API key saved. Open <strong>Settings</strong> and add your key before connecting.
         </div>
-        <div class="err-box" id="connectErr"></div>
+        <div id="connectErr" style="display:none;background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;margin-bottom:1rem">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div id="connectErrText" style="font-family:var(--mono);font-size:10px;color:var(--danger);line-height:1.6;flex:1;user-select:all;-webkit-user-select:all"></div>
+            <button onclick="copyErr()" style="font-family:var(--mono);font-size:8px;color:var(--danger);background:none;border:1px solid rgba(192,84,58,.3);border-radius:4px;padding:3px 7px;cursor:pointer;flex-shrink:0;opacity:.7" id="copyErrBtn">copy</button>
+          </div>
+        </div>
 
         <div id="walletPickerWrap">
           <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Connect wallet</div>
@@ -616,6 +621,7 @@ function selectNetwork(net) {
   document.getElementById('netBtnMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
   document.getElementById('netBtnPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
   document.getElementById('connectErr').style.display='none';
+  document.getElementById('connectErrText').textContent='';
   document.getElementById('bfKeyMissing').style.display='none';
   renderWalletPicker();
   syncSettingsNet();
@@ -910,8 +916,25 @@ function setStatus(msg, type) {
 }
 
 function showErr(msg) {
-  const el = document.getElementById('connectErr');
-  el.textContent = msg; el.style.display = 'block';
+  const el  = document.getElementById('connectErr');
+  const txt = document.getElementById('connectErrText');
+  txt.textContent = msg;
+  el.style.display = 'block';
+}
+
+function copyErr() {
+  const msg = document.getElementById('connectErrText').textContent;
+  navigator.clipboard?.writeText(msg).then(() => {
+    const btn = document.getElementById('copyErrBtn');
+    btn.textContent = 'copied ✓';
+    setTimeout(() => btn.textContent = 'copy', 2000);
+  }).catch(() => {
+    // Fallback: marker teksten så brugeren kan kopiere manuelt
+    const range = document.createRange();
+    range.selectNode(document.getElementById('connectErrText'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
 }
 
 function updateCharCount() {
