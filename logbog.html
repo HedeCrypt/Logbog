@@ -680,7 +680,7 @@ async function reportError(msg, context) {
     await fetch('https://ntfy.sh/' + DEV_ERROR_TOPIC, {
       method: 'POST',
       body: info,
-      headers: { 'Title': 'HedeLog error' }
+      headers: { 'Title': 'HedeLog error', 'Priority': context?.includes('debug') ? '2' : '4' }
     });
   } catch {}
 }
@@ -2366,9 +2366,9 @@ async function sendBatch() {
       throw new Error('Signing rejected in ' + (selectedWalletId||'wallet') + ': ' + (e.info || e.message || JSON.stringify(e)));
     }
 
-    // Log witness første byte til debug
+    // Log til debug INDEN vi forsøger submit
     const witnessBytes = h2b(witnessCbor);
-    reportError('witness[0]=0x'+witnessBytes[0].toString(16)+' len='+witnessBytes.length, 'witness-debug');
+    await reportError('witness[0]=0x'+witnessBytes[0].toString(16)+' len='+witnessBytes.length+' utxo='+utxo.tx_hash.slice(0,8)+'@'+utxo.tx_index+' addr='+utxo.address.slice(0,20), 'witness-debug');
 
     let finalTx;
     if (witnessBytes[0] === 0x84 || witnessBytes[0] === 0x83) {
@@ -2388,11 +2388,10 @@ async function sendBatch() {
 
     setStatus('Sending to Cardano…','loading');
     let txHash;
-    // Prøv wallet's egen submit først — undgår CORs og witness problemer
     try {
       txHash = await walletApi.submitTx(finalTx);
     } catch(walletSubmitErr) {
-      // Fallback til Blockfrost
+      reportError('walletSubmit failed: '+(walletSubmitErr.info||walletSubmitErr.message||JSON.stringify(walletSubmitErr)), 'submit-wallet');
       try {
         txHash = await submitTx(finalTx);
       } catch(bfErr) {
