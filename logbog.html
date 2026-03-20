@@ -1582,6 +1582,9 @@ async function mintJournalNFT() {
         for (const raw of walletUtxos) {
           try {
             const u = decodeUtxoCbor(raw);
+            if (u) {
+              await reportError('parsed: '+u.tx_hash.slice(0,8)+'@'+u.tx_index+' raw_start='+raw.slice(0,16), 'utxo-crosscheck');
+            }
             if (u && !u.hasTokens && u.lovelace >= 3000000n) {
               if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
             }
@@ -1830,9 +1833,13 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
 
   // Send tx TIL Eternl uden native script — den skal kun signere tx body hash
   // Native script tilføjes bagefter inden submit
+  const txBodyFinalHex = b2h(txBodyFinal);
+  const txBodyHash = await blake2b256(txBodyFinal);
+  await reportError('mint txbody='+txBodyFinalHex.slice(0,64)+' hash='+b2h(txBodyHash).slice(0,16), 'mint-body');
+
   const txForSigning = b2h(cborArray([
     txBodyFinal,
-    encodeCborMap([]),   // tomt witness set
+    encodeCborMap([]),
     cborBool(true),
     auxDataBytes
   ]));
@@ -1900,7 +1907,8 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
     }
   }
 
-  const finalTx = b2h(cborArray([txBodyFinal, finalWitness, cborBool(true), auxDataBytes]));
+  const finalTx = b2h(cborArray([h2b(txBodyFinalHex), finalWitness, cborBool(true), auxDataBytes]));
+  await reportError('mint finalTx='+finalTx.slice(0,64), 'mint-finaltx');
   return finalTx;
 }
 
