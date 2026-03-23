@@ -2787,16 +2787,16 @@ async function bfGet(path) {
     const a = data[0];
     if (!a) throw new Error('Asset not found');
 
-    // Koios returnerer minting_tx_metadata som { "721": { policyId: { tokenName: {...} } } }
-    // Vi normaliserer til Blockfrost-format: { onchain_metadata: { policyId: { tokenName: {...} } } }
+    // Koios: minting_tx_metadata kan have string eller integer nøgler
+    // Format: { "721": { policyId: { tokenName: {...} } } }
+    // eller:  { 721:   { policyId: { tokenName: {...} } } }
     let onchain = null;
-    const meta721 = a.minting_tx_metadata?.['721'];
-    if (meta721) {
-      // meta721 kan være { policyId: { tokenName: data } } eller { tokenName: data } direkte
-      onchain = meta721;
-    } else if (a.onchain_metadata) {
-      onchain = a.onchain_metadata;
+    const txMeta = a.minting_tx_metadata;
+    if (txMeta) {
+      const meta721 = txMeta['721'] || txMeta[721];
+      if (meta721) onchain = meta721;
     }
+    if (!onchain && a.onchain_metadata) onchain = a.onchain_metadata;
     return { onchain_metadata: onchain };
   }
 
@@ -3081,7 +3081,7 @@ async function renderCombinedJournal() {
   updateSendBar();
 
   // Hent kæde-noter i baggrunden og opdater
-  if (walletAddr && bfKey) {
+  if (walletAddr) {
     try {
       await loadEntries();
       const fresh = [...draftEntries, ...savedEntries.filter(e => !e.nftId || activeNftIds.has(e.nftId))];
