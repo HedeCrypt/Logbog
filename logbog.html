@@ -391,8 +391,12 @@
         <div style="border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;flex-direction:column;gap:.6rem">
           <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.25rem">What you need</div>
           <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>Eternl, Vespr or Flint wallet</div>
-          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>A small amount of ADA for the initial NFT mint (~2 ADA)</div>
-          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>On mobile: open HedeLog inside Vespr or Flint's app browser</div>
+          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>~2 ADA for the initial NFT mint</div>
+          <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>On mobile: open inside Vespr or Flint's app browser</div>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">⚙ Settings</button>
         </div>
 
         <div id="connectErr" style="display:none;background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;margin-bottom:1rem">
@@ -578,6 +582,17 @@
       <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
       <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
     </div>
+    <div class="settings-field" style="margin-top:1rem">
+      <label id="settingsBfLabel" style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Blockfrost API key (optional)</label>
+      <input type="text" id="settingsBfKey" placeholder="Use own key for higher rate limits" spellcheck="false" autocomplete="off"
+        style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:9px 12px"
+        onkeydown="if(event.key==='Enter')saveSettings()">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:6px;line-height:1.6">
+        A shared key is used by default. Get your own free key at <a href="https://blockfrost.io" target="_blank" style="color:var(--accent);text-decoration:none">blockfrost.io</a>.
+      </div>
+    </div>
+    <button class="primary" onclick="saveSettings()" style="width:100%;margin-top:.75rem">Save</button>
+    <div id="settingsErr" style="font-family:var(--mono);font-size:10px;color:var(--danger);margin-top:.5rem;display:none"></div>
     <div id="settingsOk" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:.5rem;display:none;text-align:center;opacity:.8">Saved ✓</div>
 
     <!-- Journal management -->
@@ -595,18 +610,20 @@ const SIGN_MSG = 'cardano-logbog-v1';
 
 const NETWORKS = {
   mainnet: {
-    apiBase:    'https://api.koios.rest/api/v1',
+    apiBase:    'https://cardano-mainnet.blockfrost.io/api/v0',
     explorerTx: 'https://cardanoscan.io/transaction/',
     label:      'Mainnet',
     storageKey: 'mainnet',
     addrPrefix: 'addr',
+    bfPrefix:   'mainnet',
   },
   preprod: {
-    apiBase:    'https://preprod.koios.rest/api/v1',
+    apiBase:    'https://cardano-preprod.blockfrost.io/api/v0',
     explorerTx: 'https://preprod.cardanoscan.io/transaction/',
     label:      'Preprod',
     storageKey: 'preprod',
     addrPrefix: 'addr_test',
+    bfPrefix:   'preprod',
   }
 };
 
@@ -690,8 +707,17 @@ function selectNetwork(net) {
 
 function syncSettingsNet() {
   const net = selectedNetwork;
+  const cfg = NETWORKS[net];
   document.getElementById('settingsNetMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
   document.getElementById('settingsNetPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
+  const label = document.getElementById('settingsBfLabel');
+  const input = document.getElementById('settingsBfKey');
+  if (label) label.textContent = 'Blockfrost API key ('+cfg.label.toLowerCase()+')';
+  if (input) {
+    const hasKey = localStorage.getItem('kl_bfkey_'+cfg.storageKey);
+    input.value = '';
+    input.placeholder = hasKey ? '(key saved — enter new to replace)' : cfg.bfPrefix+'XXXX…';
+  }
 }
 
 function openSettings() {
@@ -710,9 +736,32 @@ function closeSettingsIfOutside(e) {
 }
 
 function saveSettings() {
-  // Ingen API nøgle mere — bare luk
+  const key = document.getElementById('settingsBfKey').value.trim();
+  const cfg = NETWORKS[selectedNetwork];
+  const errEl = document.getElementById('settingsErr');
+  errEl.style.display='none';
+  if (!key) { errEl.textContent='Please enter an API key.'; errEl.style.display='block'; return; }
+  if (!key.startsWith(cfg.bfPrefix)) {
+    errEl.textContent = `Key must start with "${cfg.bfPrefix}" for ${cfg.label}.`;
+    errEl.style.display='block'; return;
+  }
+  try { localStorage.setItem('kl_bfkey_'+cfg.storageKey, key); } catch {}
+  bfKey = key;
   document.getElementById('settingsOk').style.display='block';
-  setTimeout(closeSettings, 600);
+  document.getElementById('settingsBfKey').value = '';
+  document.getElementById('settingsBfKey').placeholder = '(key saved — enter new to replace)';
+  setTimeout(closeSettings, 800);
+}
+
+// Delte Blockfrost nøgler — kun læseadgang til offentlig blockchain data
+// Brugere kan overskrive med egne nøgler i Settings for højere rate limits
+const DEFAULT_BF_KEYS = {
+  mainnet: 'mainnet3m4a2IJRiU1lOAnQl7A0mokVocBGLVEB',
+  preprod: 'preprod3UeUIOJmHuloFyF5GSdV0hmK1MnrvG6F'
+};
+
+function loadBfKey(storageKey) {
+  return localStorage.getItem('kl_bfkey_'+storageKey) || DEFAULT_BF_KEYS[storageKey] || '';
 }
 
 // Alle sensitive runtime-variabler er lukket inde i dette modul-scope
@@ -740,7 +789,7 @@ const secureVault = (() => {
 })();
 
 let walletApi = null, walletAddr = null, stakeAddr = null;
-let drafts = [], savedEntries = [];
+let drafts = [], savedEntries = [], bfKey = '';
 let nftPolicyId = null, nftAssetName = null;
 let pendingNftUnit = null;
 
@@ -804,7 +853,8 @@ function cancelLogout() {
 
 function logout() {
   secureVault.clear();
-    walletApi = null; walletAddr = null; stakeAddr = null;
+  bfKey = '';
+  walletApi = null; walletAddr = null; stakeAddr = null;
   allNfts = []; activeNftIds = new Set(); writeNftId = null;
   drafts = []; savedEntries = [];
   _cachedOwnEd25519PubKey = null;
@@ -977,8 +1027,9 @@ function encryptText(text) {
 // ── Wallet ────────────────────────────────────────────────────────
 async function connectWallet(walletId) {
   selectedWalletId = walletId;
+  const cfg = NETWORKS[selectedNetwork];
+  bfKey = loadBfKey(cfg.storageKey);
 
-  // Vis loading state på den valgte wallet knap
   const btn = document.getElementById('walletBtn_'+walletId);
   if (btn) { btn.disabled = true; btn.querySelector('.wallet-name').textContent = 'Connecting…'; }
   document.getElementById('connectErr').style.display = 'none';
@@ -2731,186 +2782,26 @@ function hexAddrToBech32(hex, prefix) {
 
 // ── Blockfrost ────────────────────────────────────────────────────
 // ── Koios API (ingen API nøgle påkrævet) ─────────────────────────
-async function koiosGet(path) {
-  const base = NETWORKS[selectedNetwork].apiBase;
-  const res = await fetch(base+'/'+path, {
-    headers: { 'Accept': 'application/json' }
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error('Koios: '+(err.hint||err.message||res.status));
-  }
-  return res.json();
-}
-
-async function koiosPost(path, body) {
-  const base = NETWORKS[selectedNetwork].apiBase;
-  const res = await fetch(base+'/'+path, {
-    method: 'POST',
-    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error('Koios: '+(err.hint||err.message||res.status));
-  }
-  return res.json();
-}
-
-// ── Koios → Blockfrost kompatibilitets-adapter ───────────────────
-// Oversætter Blockfrost-style paths til Koios API kald og normaliserer svar
-
 async function bfGet(path) {
-  const net = NETWORKS[selectedNetwork];
-  const base = net.apiBase;
-
-  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
-  const post = (url, body) => fetch(url, { method:'POST', headers, body: JSON.stringify(body) });
-  const get  = (url) => fetch(url, { headers: { 'Accept': 'application/json' } });
-
-  // addresses/{addr}/utxos → address_utxos
-  let m;
-  if ((m = path.match(/^addresses\/([^/]+)\/utxos/))) {
-    const r = await post(base+'/address_utxos', { _addresses: [m[1]] });
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    // Normaliser til Blockfrost format
-    return data.map(u => ({
-      tx_hash: u.tx_hash, tx_index: u.tx_index,
-      amount: [
-        { unit: 'lovelace', quantity: u.value },
-        ...(u.asset_list||[]).map(a => ({ unit: a.policy_id+a.asset_name, quantity: a.quantity }))
-      ]
-    }));
+  const base = NETWORKS[selectedNetwork].apiBase;
+  const res = await fetch(base+'/'+path, {
+    headers: { 'project_id': bfKey }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error('Blockfrost: '+(err.message||res.status));
   }
-
-  // assets/{unit} → asset_info
-  if ((m = path.match(/^assets\/([a-f0-9]{56})([a-f0-9]*)/))) {
-    const policyId = m[1], assetNameHex = m[2];
-    const r = await post(base+'/asset_info', { _asset_list: [[policyId, assetNameHex]] });
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    const a = data[0];
-    if (!a) throw new Error('Asset not found');
-
-    // Debug: send rå Koios respons til ntfy
-    console.log('Koios asset_info raw:', JSON.stringify(a).slice(0, 500));
-    await reportError(JSON.stringify(a).slice(0, 500), 'asset-raw');
-
-    // Koios: minting_tx_metadata kan have string eller integer nøgler
-    // Format: { "721": { policyId: { tokenName: {...} } } }
-    // eller:  { 721:   { policyId: { tokenName: {...} } } }
-    let onchain = null;
-    const txMeta = a.minting_tx_metadata;
-    if (txMeta) {
-      const meta721 = txMeta['721'] || txMeta[721];
-      if (meta721) onchain = meta721;
-    }
-    if (!onchain && a.onchain_metadata) onchain = a.onchain_metadata;
-    return { onchain_metadata: onchain };
-  }
-
-  // addresses/{addr}/transactions → address_txs
-  if ((m = path.match(/^addresses\/([^/]+)\/transactions(.*)/))) {
-    const qs = m[2] || '';
-    const order = qs.includes('order=asc') ? 'asc' : 'desc';
-    const countM = qs.match(/count=(\d+)/);
-    const count = countM ? parseInt(countM[1]) : 20;
-    const pageM = qs.match(/page=(\d+)/);
-    const page = pageM ? parseInt(pageM[1]) : 1;
-    const afterM = qs.match(/after_block_height=(\d+)/);
-    const body = { _addresses: [m[1]], _after_block_height: afterM ? parseInt(afterM[1]) : 0 };
-    const r = await post(base+'/address_txs', body);
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const all = await r.json();
-    const sorted = order === 'asc' ? all : [...all].reverse();
-    const start = (page-1)*count;
-    return sorted.slice(start, start+count).map(t => ({
-      tx_hash: t.tx_hash,
-      block_height: t.block_height,
-      block_time: t.block_time
-    }));
-  }
-
-  // txs/{hash}/utxos → tx_utxos
-  if ((m = path.match(/^txs\/([a-f0-9]{64})\/utxos/))) {
-    const r = await post(base+'/tx_utxos', { _tx_hashes: [m[1]] });
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    const tx = data[0];
-    if (!tx) throw new Error('Tx not found');
-    const mapUtxo = u => ({ address: u.payment_addr?.bech32||u.address, tx_hash: m[1], tx_index: u.tx_index,
-      amount: [{ unit:'lovelace', quantity: u.value }, ...(u.asset_list||[]).map(a=>({ unit:a.policy_id+a.asset_name, quantity:a.quantity }))] });
-    return { inputs: (tx.inputs||[]).map(mapUtxo), outputs: (tx.outputs||[]).map(mapUtxo) };
-  }
-
-  // txs/{hash}/metadata → tx_metadata
-  if ((m = path.match(/^txs\/([a-f0-9]{64})\/metadata/))) {
-    const r = await post(base+'/tx_metadata', { _tx_hashes: [m[1]] });
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    const tx = data[0];
-    if (!tx?.metadata) return [];
-    return Object.entries(tx.metadata).map(([label, json_metadata]) => ({ label, json_metadata }));
-  }
-
-  // metadata/txs/labels/{label} — Koios har ikke dette endpoint direkte
-  // Brug wallet adresse transaktioner og filtrer i stedet
-  if ((m = path.match(/^metadata\/txs\/labels\/(\d+)/))) {
-    const label = parseInt(m[1]);
-    const qs = path.split('?')[1]||'';
-    const pageM = qs.match(/page=(\d+)/);
-    const page = pageM ? parseInt(pageM[1]) : 1;
-    // Hent alle txs for wallet og tjek metadata — returnér dem med label
-    const txsR = await post(base+'/address_txs', { _addresses: [walletAddr], _after_block_height: 0 });
-    if (!txsR.ok) return [];
-    const txs = await txsR.json();
-    const slice = [...txs].reverse().slice((page-1)*100, page*100);
-    const result = [];
-    for (const tx of slice) {
-      try {
-        const mR = await post(base+'/tx_metadata', { _tx_hashes: [tx.tx_hash] });
-        if (!mR.ok) continue;
-        const mData = await mR.json();
-        const found = mData[0]?.metadata?.[label.toString()];
-        if (found) result.push({ tx_hash: tx.tx_hash, json_metadata: found });
-      } catch { continue; }
-    }
-    return result;
-  }
-
-  // epochs/latest/parameters → epoch_params
-  if (path.startsWith('epochs/latest/parameters')) {
-    const r = await get(base+'/epoch_params');
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    const p = data[0];
-    return { min_fee_a: p.min_fee_a, min_fee_b: p.min_fee_b };
-  }
-
-  // blocks/latest → tip
-  if (path.startsWith('blocks/latest')) {
-    const r = await get(base+'/tip');
-    if (!r.ok) throw new Error('Koios '+r.status);
-    const data = await r.json();
-    const t = data[0];
-    return { slot: t.abs_slot, hash: t.hash, block_time: Math.floor(new Date(t.block_time).getTime()/1000) };
-  }
-
-  throw new Error('Unhandled API path: '+path);
+  return res.json();
 }
 
-// Hent tx CBOR via Koios
 async function getTxCbor(txHash) {
   const base = NETWORKS[selectedNetwork].apiBase;
-  const r = await fetch(base+'/tx_cbor', {
-    method: 'POST',
-    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ _tx_hashes: [txHash] })
+  const res = await fetch(base+'/txs/'+txHash+'/cbor', {
+    headers: { 'project_id': bfKey }
   });
-  if (!r.ok) return null;
-  const data = await r.json();
-  return data[0]?.cbor || null;
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.cbor || null;
 }
 
 function friendlySubmitError(raw) {
