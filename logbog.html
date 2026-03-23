@@ -1009,7 +1009,7 @@ async function connectWallet(walletId) {
     addrEl.style.display = 'block';
 
     const badgeEl = document.getElementById('networkBadge');
-    badgeEl.innerHTML = `<span class="net-badge ${selectedNetwork}">${netCfg.label}</span>`;
+    badgeEl.innerHTML = `<span class="net-badge ${selectedNetwork}">${NETWORKS[selectedNetwork].label}</span>`;
     badgeEl.style.display = 'block';
 
     // Tjek for Journal NFT i wallet
