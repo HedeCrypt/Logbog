@@ -665,8 +665,14 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-// Fejlrapportering — deaktiveret i produktion
-function reportError() {}
+// Fejlrapportering til ntfy.sh
+const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
+async function reportError(msg, context) {
+  try {
+    const info = [context||'', msg, 'wallet:'+(selectedWalletId||'?'), 'net:'+selectedNetwork, new Date().toISOString()].filter(Boolean).join(' | ');
+    await fetch('https://ntfy.sh/'+DEV_ERROR_TOPIC, { method:'POST', body:info, headers:{'Title':'HedeLog'} });
+  } catch {}
+}
 
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
@@ -2787,8 +2793,9 @@ async function bfGet(path) {
     const a = data[0];
     if (!a) throw new Error('Asset not found');
 
-    // Debug: log rå Koios respons til console
+    // Debug: send rå Koios respons til ntfy
     console.log('Koios asset_info raw:', JSON.stringify(a).slice(0, 500));
+    await reportError(JSON.stringify(a).slice(0, 500), 'asset-raw');
 
     // Koios: minting_tx_metadata kan have string eller integer nøgler
     // Format: { "721": { policyId: { tokenName: {...} } } }
