@@ -1094,10 +1094,22 @@ async function detectJournalNFT() {
         const onchain = meta.onchain_metadata;
         if (!onchain) continue;
 
+        // Søg efter tokenData i alle mulige nesting-formater:
+        // Blockfrost: { policyId: { tokenName: data } }
+        // Koios:      { policyId: { tokenName: data } } eller { tokenName: data } direkte
         let tokenData = null;
-        if (onchain[policyId]?.[tokenName]) tokenData = onchain[policyId][tokenName];
-        else if (onchain[tokenName]) tokenData = onchain[tokenName];
-        else if (onchain.journalKey !== undefined) tokenData = onchain;
+        if (onchain[policyId]?.[tokenName])           tokenData = onchain[policyId][tokenName];
+        else if (onchain[tokenName])                   tokenData = onchain[tokenName];
+        else if (onchain.journalKey !== undefined)     tokenData = onchain;
+        else {
+          // Dyk ét niveau ned og søg i alle værdier
+          for (const v of Object.values(onchain)) {
+            if (v && typeof v === 'object') {
+              if (v[tokenName]) { tokenData = v[tokenName]; break; }
+              if (v.journalKey !== undefined) { tokenData = v; break; }
+            }
+          }
+        }
         if (!tokenData?.journalKey) continue;
 
         let encPrivKeyBytes = null;
@@ -2774,9 +2786,18 @@ async function bfGet(path) {
     const data = await r.json();
     const a = data[0];
     if (!a) throw new Error('Asset not found');
-    return { onchain_metadata: a.minting_tx_metadata?.['721']?.[policyId] 
-      ? { [policyId]: { [a.asset_name_ascii||'']: a.minting_tx_metadata['721'][policyId][a.asset_name_ascii||''] } }
-      : a.onchain_metadata || null };
+
+    // Koios returnerer minting_tx_metadata som { "721": { policyId: { tokenName: {...} } } }
+    // Vi normaliserer til Blockfrost-format: { onchain_metadata: { policyId: { tokenName: {...} } } }
+    let onchain = null;
+    const meta721 = a.minting_tx_metadata?.['721'];
+    if (meta721) {
+      // meta721 kan være { policyId: { tokenName: data } } eller { tokenName: data } direkte
+      onchain = meta721;
+    } else if (a.onchain_metadata) {
+      onchain = a.onchain_metadata;
+    }
+    return { onchain_metadata: onchain };
   }
 
   // addresses/{addr}/transactions → address_txs
