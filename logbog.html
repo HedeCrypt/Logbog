@@ -2787,6 +2787,9 @@ async function bfGet(path) {
     const a = data[0];
     if (!a) throw new Error('Asset not found');
 
+    // Debug: log rå Koios respons til console
+    console.log('Koios asset_info raw:', JSON.stringify(a).slice(0, 500));
+
     // Koios: minting_tx_metadata kan have string eller integer nøgler
     // Format: { "721": { policyId: { tokenName: {...} } } }
     // eller:  { 721:   { policyId: { tokenName: {...} } } }
