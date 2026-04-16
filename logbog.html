@@ -398,7 +398,13 @@
         </div>
 
         <div id="walletPickerWrap">
-          <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Connect wallet</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em">Connect wallet</div>
+            <div style="display:flex;gap:4px">
+              <div class="net-btn active" id="netBtnMainnet" onclick="selectNetwork('mainnet')" style="padding:3px 8px;font-size:8px">Mainnet</div>
+              <div class="net-btn" id="netBtnPreprod" onclick="selectNetwork('preprod')" style="padding:3px 8px;font-size:8px">Preprod</div>
+            </div>
+          </div>
           <div id="walletPicker" style="display:flex;flex-direction:column;gap:6px"></div>
           <div id="noWalletMsg" style="display:none;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.7;padding:10px 0">
             No compatible wallet detected.<br>
@@ -701,6 +707,10 @@ function selectNetwork(net) {
   selectedNetwork = net;
   document.getElementById('connectErr').style.display='none';
   document.getElementById('connectErrText').textContent='';
+  const mb = document.getElementById('netBtnMainnet');
+  const pb = document.getElementById('netBtnPreprod');
+  if (mb) mb.className = 'net-btn'+(net==='mainnet'?' active':'');
+  if (pb) pb.className = 'net-btn'+(net==='preprod'?' active preprod':'');
   renderWalletPicker();
   syncSettingsNet();
 }
@@ -3179,7 +3189,20 @@ function loadLocalStorage() {
 }
 
 // Render wallet picker når extensions er injiceret (~100ms efter load)
-window.addEventListener('load', () => setTimeout(renderWalletPicker, 150));
+// Prøv at finde wallets flere gange — mobile dApp browsere injicerer langsomt
+window.addEventListener('load', () => {
+  let attempts = 0;
+  function tryRender() {
+    const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
+    if (available.length > 0 || attempts >= 5) {
+      renderWalletPicker();
+    } else {
+      attempts++;
+      setTimeout(tryRender, 400);
+    }
+  }
+  setTimeout(tryRender, 200);
+});
 
 </script>
 </body>
