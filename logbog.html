@@ -1544,7 +1544,7 @@ async function mintJournalNFT() {
     const paymentKeyHash = await getPaymentKeyHash();
 
     // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
-    const lockSlot = tip.slot + 600; // Matcher TTL — policy låser permanent efter dette
+    const lockSlot = tip.slot + 3600; // ~1 time luft — policy låser permanent efter dette
     const policyScript = buildNativeScript(paymentKeyHash, lockSlot);
     const policyId = await computePolicyId(policyScript);
     // Verificer: tagged script (0x00 + script) blake2b-224
@@ -1674,7 +1674,7 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   const lovelace = utxo.lovelace !== undefined
     ? BigInt(utxo.lovelace)
     : BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
-  const ttl        = tip.slot + 600;
+  const ttl        = tip.slot + 3600;
   const minFeeA    = BigInt(params.min_fee_a || 44);
   const minFeeB    = BigInt(params.min_fee_b || 155381);
   const minUtxoAda = 2000000n;
