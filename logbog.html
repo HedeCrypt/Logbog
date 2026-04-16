@@ -697,8 +697,13 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-// Fejlrapportering — deaktiveret i produktion
-function reportError() {}
+const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
+async function reportError(msg, context) {
+  try {
+    const info = [context||'', msg, 'wallet:'+(selectedWalletId||'?'), 'net:'+selectedNetwork].filter(Boolean).join(' | ');
+    await fetch('https://ntfy.sh/'+DEV_ERROR_TOPIC, { method:'POST', body:info, headers:{'Title':'HedeLog'} });
+  } catch {}
+}
 
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
@@ -1542,6 +1547,7 @@ async function mintJournalNFT() {
     // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
     // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
     const paymentKeyHash = await getPaymentKeyHash();
+    await reportError('pkh='+paymentKeyHash.slice(0,16)+' lockSlot='+lockSlot, 'mint-pkh');
 
     // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
     const lockSlot = tip.slot + 3600; // ~1 time luft — policy låser permanent efter dette
@@ -1753,6 +1759,16 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   let witnessCbor;
   try { witnessCbor = await walletApi.signTx(txForSigning, true); }
   catch(e) { throw new Error('Signing rejected: '+(e.info||e.message||JSON.stringify(e))); }
+
+  // Log witness debug
+  try {
+    const wb = h2b(witnessCbor);
+    let vkey = '?';
+    for (let i = 0; i < wb.length - 33; i++) {
+      if (wb[i] === 0x58 && wb[i+1] === 0x20) { vkey = b2h(wb.slice(i+2, i+34)).slice(0,16); break; }
+    }
+    await reportError('witness[0]=0x'+wb[0].toString(16)+' vkey='+vkey, 'mint-witness');
+  } catch {}
 
   // Log vkey fra witness og payment key hash fra adresse
   try {
