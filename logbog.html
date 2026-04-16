@@ -1546,7 +1546,7 @@ async function mintJournalNFT() {
     // Policy: native script { type: "sig", keyHash: <pubKeyHash> } kombineret med
     // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
     // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
-    const paymentKeyHash = await getPaymentKeyHash();
+    const paymentKeyHash = getPaymentKeyHash();
     const lockSlot = tip.slot + 3600; // ~1 time luft — policy låser permanent efter dette
     await reportError('pkh='+paymentKeyHash.slice(0,16)+' lockSlot='+lockSlot, 'mint-pkh');
     const policyScript = buildNativeScript(paymentKeyHash, lockSlot);
@@ -1608,40 +1608,10 @@ async function mintJournalNFT() {
   }
 }
 
-// Hent payment key hash fra wallet adresse
-async function getPaymentKeyHash() {
-  // Forsøg 1: hent pkh fra en on-chain tx der er signeret af denne wallet
-  // Vi scanner wallet's udgående transaktioner og udtrækker vkey fra witness
-  try {
-    const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=10');
-    for (const tx of txs) {
-      try {
-        const cborHex = await getTxCbor(tx.tx_hash);
-        if (!cborHex) continue;
-        const bytes = h2b(cborHex);
-        // tx CBOR: [body, witness_set, bool, aux]
-        // witness_set map key 0 = vkeywitnesses = [[vkey(32), sig(64)], ...]
-        const witnessSet = extractCborArrayItem(bytes, 1);
-        if (!witnessSet) continue;
-        const vkeyWitnesses = extractCborMapValue(witnessSet, 0);
-        if (!vkeyWitnesses) continue;
-        // vkeyWitnesses er array af [vkey, sig] — udtræk første vkey
-        const vkeyBytes = vkeyWitnesses;
-        // Scan for 0x5820 pattern (bytes(32) = vkey)
-        for (let i = 0; i < vkeyBytes.length - 33; i++) {
-          if (vkeyBytes[i] === 0x58 && vkeyBytes[i+1] === 0x20) {
-            const pubKey = vkeyBytes.slice(i+2, i+34);
-            const pkh = await blake2b224(pubKey);
-            const pkhHex = b2h(pkh);
-            return pkhHex;
-          }
-        }
-      } catch { continue; }
-    }
-  } catch(e) {
-  }
-
-  // Fallback: adresse bytes
+// Hent payment key hash direkte fra wallet adresse bytes — hurtig og korrekt
+function getPaymentKeyHash() {
+  // Payment key hash er bytes 1-29 af bech32-dekodet adresse
+  // Virker for Eternl, Vespr og Flint
   const addrHex = bech32ToHex(walletAddr);
   const addrBytes = h2b(addrHex);
   return b2h(addrBytes.slice(1, 29));
@@ -1775,7 +1745,7 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
     for (let i = 0; i < wb.length - 33; i++) {
       if (wb[i] === 0x58 && wb[i+1] === 0x20) { vkey = b2h(wb.slice(i+2, i+34)); break; }
     }
-    const pkh = await getPaymentKeyHash();
+    const pkh = getPaymentKeyHash();
   } catch {}
 
 
