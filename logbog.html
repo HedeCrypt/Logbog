@@ -1547,10 +1547,8 @@ async function mintJournalNFT() {
     // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
     // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
     const paymentKeyHash = await getPaymentKeyHash();
-    await reportError('pkh='+paymentKeyHash.slice(0,16)+' lockSlot='+lockSlot, 'mint-pkh');
-
-    // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
     const lockSlot = tip.slot + 3600; // ~1 time luft — policy låser permanent efter dette
+    await reportError('pkh='+paymentKeyHash.slice(0,16)+' lockSlot='+lockSlot, 'mint-pkh');
     const policyScript = buildNativeScript(paymentKeyHash, lockSlot);
     const policyId = await computePolicyId(policyScript);
     // Verificer: tagged script (0x00 + script) blake2b-224
