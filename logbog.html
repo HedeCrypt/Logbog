@@ -668,6 +668,20 @@ function renderWalletPicker() {
 
   noMsg.style.display = 'none';
   picker.style.display = 'flex';
+
+  // Én wallet — vis som stor primær knap
+  if (available.length === 1) {
+    const w = available[0];
+    picker.innerHTML = `
+      <button class="wallet-option primary" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}"
+        style="background:var(--accent);border-color:var(--accent);color:var(--ink);justify-content:center;gap:10px;padding:12px 20px">
+        <span style="font-size:20px">${w.icon}</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:500">Connect ${w.name}</span>
+      </button>`;
+    return;
+  }
+
+  // Flere wallets — vis valgliste
   picker.innerHTML = available.map(w => `
     <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
       <div class="wallet-icon">${w.icon}</div>
@@ -677,11 +691,6 @@ function renderWalletPicker() {
       </div>
       ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
     </button>`).join('');
-
-  // Auto-connect kun hvis præcis én wallet er tilgængelig OG brugeren ikke allerede er logget ind
-  if (available.length === 1 && !walletApi) {
-    setTimeout(() => connectWallet(available[0].id), 300);
-  }
 }
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
