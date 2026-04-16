@@ -1031,15 +1031,12 @@ async function connectWallet(walletId) {
   const cfg = NETWORKS[selectedNetwork];
   bfKey = loadBfKey(cfg.storageKey);
 
-  // Vis connecting status — enten på wallet-knappen eller i picker-wrappet
   const btn = document.getElementById('walletBtn_'+walletId);
   if (btn) {
     btn.disabled = true;
-    btn.querySelector('.wallet-name').textContent = 'Connecting…';
-  } else {
-    // Auto-connect uden knap — vis status i picker wrappet
-    const wrap = document.getElementById('walletPickerWrap');
-    if (wrap) wrap.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px"><div class="spinner"></div> Connecting…</div>`;
+    const nameEl = btn.querySelector('.wallet-name');
+    if (nameEl) nameEl.textContent = 'Connecting…';
+    else btn.querySelector('span:last-child').textContent = 'Connecting…';
   }
   document.getElementById('connectErr').style.display = 'none';
 
