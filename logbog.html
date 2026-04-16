@@ -1034,9 +1034,8 @@ async function connectWallet(walletId) {
   const btn = document.getElementById('walletBtn_'+walletId);
   if (btn) {
     btn.disabled = true;
-    const nameEl = btn.querySelector('.wallet-name');
+    const nameEl = btn.querySelector('.wallet-name') || btn.querySelector('span:last-child');
     if (nameEl) nameEl.textContent = 'Connecting…';
-    else btn.querySelector('span:last-child').textContent = 'Connecting…';
   }
   document.getElementById('connectErr').style.display = 'none';
 
@@ -1076,7 +1075,7 @@ async function connectWallet(walletId) {
     badgeEl.style.display = 'block';
 
     // Tjek for Journal NFT i wallet
-    btn.textContent = 'Checking for journal NFT…';
+    if (btn) btn.textContent = 'Checking for journal NFT…';
     const nftFound = await detectJournalNFT();
 
     document.getElementById('newNoteBtn').disabled = false;
