@@ -666,12 +666,6 @@ function renderWalletPicker() {
     return;
   }
 
-  // Én wallet tilgængelig — connect direkte uden at vise valgskærmen
-  if (available.length === 1) {
-    connectWallet(available[0].id);
-    return;
-  }
-
   noMsg.style.display = 'none';
   picker.style.display = 'flex';
   picker.innerHTML = available.map(w => `
@@ -683,6 +677,11 @@ function renderWalletPicker() {
       </div>
       ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
     </button>`).join('');
+
+  // Auto-connect kun hvis præcis én wallet er tilgængelig OG brugeren ikke allerede er logget ind
+  if (available.length === 1 && !walletApi) {
+    setTimeout(() => connectWallet(available[0].id), 300);
+  }
 }
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
@@ -1090,21 +1089,7 @@ async function connectWallet(walletId) {
       showScreen('setup');
     }
   } catch(e) {
-    // Genrender picker manuelt uden auto-connect så brugeren kan prøve igen
-    const picker = document.getElementById('walletPicker');
-    const noMsg  = document.getElementById('noWalletMsg');
-    const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
-    noMsg.style.display = 'none';
-    picker.style.display = 'flex';
-    picker.innerHTML = available.map(w => `
-      <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
-        <div class="wallet-icon">${w.icon}</div>
-        <div class="wallet-info">
-          <div class="wallet-name">${w.name}</div>
-          <div class="wallet-desc">${w.desc}</div>
-        </div>
-        ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
-      </button>`).join('');
+    renderWalletPicker();
     showErr(e.message||'Unknown error.');
   }
 }
