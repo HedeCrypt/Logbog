@@ -376,11 +376,6 @@
         <h1 class="big"><em>HedeLog</em></h1>
         <p class="connect-sub">An encrypted journal, sealed on the Cardano blockchain.<br>Written once. Remembered forever.</p>
 
-        <div class="net-toggle">
-          <div class="net-btn active" id="netBtnMainnet" onclick="selectNetwork('mainnet')">Mainnet</div>
-          <div class="net-btn" id="netBtnPreprod" onclick="selectNetwork('preprod')">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
-        </div>
-
         <div class="steps-box">
           <div class="step-row"><span class="step-num">01</span><span class="step-text">Mint a <em>Journal Key</em> NFT — it holds your encrypted journal key on-chain and proves ownership</span></div>
           <div class="step-row"><span class="step-num">02</span><span class="step-text">Write entries locally. They are encrypted on your device with NaCl secretbox before anything leaves</span></div>
@@ -578,9 +573,13 @@
       <span>Settings</span>
       <button class="settings-close" onclick="closeSettings()">×</button>
     </div>
-    <div class="net-toggle">
-      <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
-      <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
+    <div style="margin-bottom:.75rem">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Network</div>
+      <div class="net-toggle">
+        <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
+        <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="opacity:.5">testnet</span></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:5px;opacity:.6">Changing network requires reconnecting your wallet.</div>
     </div>
     <div class="settings-field" style="margin-top:1rem">
       <label id="settingsBfLabel" style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Blockfrost API key (optional)</label>
@@ -696,9 +695,6 @@ function reportError() {}
 
 function selectNetwork(net) {
   selectedNetwork = net;
-  const cfg = NETWORKS[net];
-  document.getElementById('netBtnMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
-  document.getElementById('netBtnPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
   document.getElementById('connectErr').style.display='none';
   document.getElementById('connectErrText').textContent='';
   renderWalletPicker();
@@ -1027,8 +1023,16 @@ async function connectWallet(walletId) {
   const cfg = NETWORKS[selectedNetwork];
   bfKey = loadBfKey(cfg.storageKey);
 
+  // Vis connecting status — enten på wallet-knappen eller i picker-wrappet
   const btn = document.getElementById('walletBtn_'+walletId);
-  if (btn) { btn.disabled = true; btn.querySelector('.wallet-name').textContent = 'Connecting…'; }
+  if (btn) {
+    btn.disabled = true;
+    btn.querySelector('.wallet-name').textContent = 'Connecting…';
+  } else {
+    // Auto-connect uden knap — vis status i picker wrappet
+    const wrap = document.getElementById('walletPickerWrap');
+    if (wrap) wrap.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px"><div class="spinner"></div> Connecting…</div>`;
+  }
   document.getElementById('connectErr').style.display = 'none';
 
   try {
@@ -1086,7 +1090,21 @@ async function connectWallet(walletId) {
       showScreen('setup');
     }
   } catch(e) {
-    renderWalletPicker();
+    // Genrender picker manuelt uden auto-connect så brugeren kan prøve igen
+    const picker = document.getElementById('walletPicker');
+    const noMsg  = document.getElementById('noWalletMsg');
+    const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
+    noMsg.style.display = 'none';
+    picker.style.display = 'flex';
+    picker.innerHTML = available.map(w => `
+      <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
+        <div class="wallet-icon">${w.icon}</div>
+        <div class="wallet-info">
+          <div class="wallet-name">${w.name}</div>
+          <div class="wallet-desc">${w.desc}</div>
+        </div>
+        ${w.badge ? `<span class="wallet-badge">${w.badge}</span>` : ''}
+      </button>`).join('');
     showErr(e.message||'Unknown error.');
   }
 }
