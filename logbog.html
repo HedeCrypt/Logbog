@@ -376,11 +376,6 @@
         <h1 class="big"><em>HedeLog</em></h1>
         <p class="connect-sub">An encrypted journal, sealed on the Cardano blockchain.<br>Written once. Remembered forever.</p>
 
-        <div class="net-toggle">
-          <div class="net-btn active" id="netBtnMainnet" onclick="selectNetwork('mainnet')">Mainnet</div>
-          <div class="net-btn" id="netBtnPreprod" onclick="selectNetwork('preprod')">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
-        </div>
-
         <div class="steps-box">
           <div class="step-row"><span class="step-num">01</span><span class="step-text">Mint a <em>Journal Key</em> NFT — it holds your encrypted journal key on-chain and proves ownership</span></div>
           <div class="step-row"><span class="step-num">02</span><span class="step-text">Write entries locally. They are encrypted on your device with NaCl secretbox before anything leaves</span></div>
@@ -395,10 +390,6 @@
           <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:flex-start"><span style="color:var(--accent);margin-top:1px">⬡</span>On mobile: open inside Vespr or Flint's app browser</div>
         </div>
 
-        <div style="margin-bottom:10px">
-          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">⚙ Settings</button>
-        </div>
-
         <div id="connectErr" style="display:none;background:var(--danger-dim);border:1px solid rgba(192,84,58,.25);border-radius:6px;padding:10px 14px;margin-bottom:1rem">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div id="connectErrText" style="font-family:var(--mono);font-size:10px;color:var(--danger);line-height:1.6;flex:1;user-select:all;-webkit-user-select:all"></div>
@@ -407,7 +398,13 @@
         </div>
 
         <div id="walletPickerWrap">
-          <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Connect wallet</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em">Connect wallet</div>
+            <div style="display:flex;gap:4px">
+              <div class="net-btn active" id="netBtnMainnet" onclick="selectNetwork('mainnet')" style="padding:3px 8px;font-size:8px">Mainnet</div>
+              <div class="net-btn" id="netBtnPreprod" onclick="selectNetwork('preprod')" style="padding:3px 8px;font-size:8px">Preprod</div>
+            </div>
+          </div>
           <div id="walletPicker" style="display:flex;flex-direction:column;gap:6px"></div>
           <div id="noWalletMsg" style="display:none;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.7;padding:10px 0">
             No compatible wallet detected.<br>
@@ -416,7 +413,7 @@
           </div>
         </div>
         <div style="margin-top:10px">
-          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">Settings ⚙</button>
+          <button class="ghost" onclick="openSettings()" style="opacity:.7;font-size:10px">⚙ Settings</button>
         </div>
       </div>
     </div>
@@ -578,9 +575,13 @@
       <span>Settings</span>
       <button class="settings-close" onclick="closeSettings()">×</button>
     </div>
-    <div class="net-toggle">
-      <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
-      <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="font-size:9px;opacity:.5">testnet</span></div>
+    <div style="margin-bottom:.75rem">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Network</div>
+      <div class="net-toggle">
+        <div class="net-btn active" id="settingsNetMainnet" onclick="selectNetwork('mainnet');syncSettingsNet()">Mainnet</div>
+        <div class="net-btn" id="settingsNetPreprod" onclick="selectNetwork('preprod');syncSettingsNet()">Preprod <span style="opacity:.5">testnet</span></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:5px;opacity:.6">Changing network requires reconnecting your wallet.</div>
     </div>
     <div class="settings-field" style="margin-top:1rem">
       <label id="settingsBfLabel" style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Blockfrost API key (optional)</label>
@@ -669,6 +670,20 @@ function renderWalletPicker() {
 
   noMsg.style.display = 'none';
   picker.style.display = 'flex';
+
+  // Én wallet — vis som stor primær knap
+  if (available.length === 1) {
+    const w = available[0];
+    picker.innerHTML = `
+      <button class="wallet-option primary" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}"
+        style="background:var(--accent);border-color:var(--accent);color:var(--ink);justify-content:center;gap:10px;padding:12px 20px">
+        <span style="font-size:20px">${w.icon}</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:500">Connect ${w.name}</span>
+      </button>`;
+    return;
+  }
+
+  // Flere wallets — vis valgliste
   picker.innerHTML = available.map(w => `
     <button class="wallet-option" onclick="connectWallet('${w.id}')" id="walletBtn_${w.id}">
       <div class="wallet-icon">${w.icon}</div>
@@ -682,25 +697,19 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-// Fejlrapportering til ntfy.sh
-const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
-async function reportError(msg, context) {
-  try {
-    const info = [context||'', msg, 'wallet:'+(selectedWalletId||'?'), 'net:'+selectedNetwork, new Date().toISOString()].filter(Boolean).join(' | ');
-    await fetch('https://ntfy.sh/'+DEV_ERROR_TOPIC, { method:'POST', body:info, headers:{'Title':'HedeLog'} });
-  } catch {}
-}
+function reportError() {}
 
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
 
 function selectNetwork(net) {
   selectedNetwork = net;
-  const cfg = NETWORKS[net];
-  document.getElementById('netBtnMainnet').className = 'net-btn'+(net==='mainnet'?' active':'');
-  document.getElementById('netBtnPreprod').className = 'net-btn'+(net==='preprod'?' active preprod':'');
   document.getElementById('connectErr').style.display='none';
   document.getElementById('connectErrText').textContent='';
+  const mb = document.getElementById('netBtnMainnet');
+  const pb = document.getElementById('netBtnPreprod');
+  if (mb) mb.className = 'net-btn'+(net==='mainnet'?' active':'');
+  if (pb) pb.className = 'net-btn'+(net==='preprod'?' active preprod':'');
   renderWalletPicker();
   syncSettingsNet();
 }
@@ -803,10 +812,7 @@ let writeNftId = null;
 
 // Behold disse som aliases for bagudkompatibilitet i eksisterende kode
 // Brug altid secureVault til nye adgange
-Object.defineProperty(window, 'cryptoKey', { get: () => secureVault.getCryptoKey(), set: v => secureVault.setCryptoKey(v), configurable: true });
-Object.defineProperty(window, 'walletSignKey', { get: () => secureVault.getWalletSignKey(), set: v => secureVault.setWalletSignKey(v), configurable: true });
-Object.defineProperty(window, 'nftPrivKey', { get: () => secureVault.getNftPrivKey(), set: v => secureVault.setNftPrivKey(v), configurable: true });
-Object.defineProperty(window, 'nftPubKey', { get: () => secureVault.getNftPubKey(), set: v => secureVault.setNftPubKey(v), configurable: true });
+// Sensitive nøgler er kun tilgængelige via secureVault — ikke på window
 
 const h2b = h => {
   if (!h || typeof h !== 'string') return new Uint8Array(0);
@@ -1031,7 +1037,11 @@ async function connectWallet(walletId) {
   bfKey = loadBfKey(cfg.storageKey);
 
   const btn = document.getElementById('walletBtn_'+walletId);
-  if (btn) { btn.disabled = true; btn.querySelector('.wallet-name').textContent = 'Connecting…'; }
+  if (btn) {
+    btn.disabled = true;
+    const nameEl = btn.querySelector('.wallet-name') || btn.querySelector('span:last-child');
+    if (nameEl) nameEl.textContent = 'Connecting…';
+  }
   document.getElementById('connectErr').style.display = 'none';
 
   try {
@@ -1070,7 +1080,7 @@ async function connectWallet(walletId) {
     badgeEl.style.display = 'block';
 
     // Tjek for Journal NFT i wallet
-    btn.textContent = 'Checking for journal NFT…';
+    if (btn) btn.textContent = 'Checking for journal NFT…';
     const nftFound = await detectJournalNFT();
 
     document.getElementById('newNoteBtn').disabled = false;
@@ -1530,10 +1540,8 @@ async function mintJournalNFT() {
     // Policy: native script { type: "sig", keyHash: <pubKeyHash> } kombineret med
     // { type: "before", slot: <currentSlot + 1> } — låser for altid efter mint
     // Udled payment key hash direkte fra adresse bytes — virker også for nye wallets
-    const paymentKeyHash = await getPaymentKeyHash();
-
-    // Native script: { type: "all", scripts: [{ type: "sig", keyHash: pkh }, { type: "before", slot: tip.slot+2 }] }
-    const lockSlot = tip.slot + 600; // Matcher TTL — policy låser permanent efter dette
+    const paymentKeyHash = getPaymentKeyHash();
+    const lockSlot = tip.slot + 3600; // ~1 time luft — policy låser permanent efter dette
     const policyScript = buildNativeScript(paymentKeyHash, lockSlot);
     const policyId = await computePolicyId(policyScript);
     // Verificer: tagged script (0x00 + script) blake2b-224
@@ -1560,8 +1568,7 @@ async function mintJournalNFT() {
     const txCbor = await buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata);
 
     setMintStatus('Submitting to Cardano…');
-    // Brug Eternl's submitTx direkte — undgår Blockfrost multi-sig dialog
-    const txHash = await submitViaEternl(txCbor);
+    const txHash = await submitTx(txCbor);
 
     // Opdater multi-NFT state
     const newNft = makeNftEntry(privKey, policyId, tokenName);
@@ -1593,40 +1600,10 @@ async function mintJournalNFT() {
   }
 }
 
-// Hent payment key hash fra wallet adresse
-async function getPaymentKeyHash() {
-  // Forsøg 1: hent pkh fra en on-chain tx der er signeret af denne wallet
-  // Vi scanner wallet's udgående transaktioner og udtrækker vkey fra witness
-  try {
-    const txs = await bfGet('addresses/'+walletAddr+'/transactions?order=desc&count=10');
-    for (const tx of txs) {
-      try {
-        const cborHex = await getTxCbor(tx.tx_hash);
-        if (!cborHex) continue;
-        const bytes = h2b(cborHex);
-        // tx CBOR: [body, witness_set, bool, aux]
-        // witness_set map key 0 = vkeywitnesses = [[vkey(32), sig(64)], ...]
-        const witnessSet = extractCborArrayItem(bytes, 1);
-        if (!witnessSet) continue;
-        const vkeyWitnesses = extractCborMapValue(witnessSet, 0);
-        if (!vkeyWitnesses) continue;
-        // vkeyWitnesses er array af [vkey, sig] — udtræk første vkey
-        const vkeyBytes = vkeyWitnesses;
-        // Scan for 0x5820 pattern (bytes(32) = vkey)
-        for (let i = 0; i < vkeyBytes.length - 33; i++) {
-          if (vkeyBytes[i] === 0x58 && vkeyBytes[i+1] === 0x20) {
-            const pubKey = vkeyBytes.slice(i+2, i+34);
-            const pkh = await blake2b224(pubKey);
-            const pkhHex = b2h(pkh);
-            return pkhHex;
-          }
-        }
-      } catch { continue; }
-    }
-  } catch(e) {
-  }
-
-  // Fallback: adresse bytes
+// Hent payment key hash direkte fra wallet adresse bytes — hurtig og korrekt
+function getPaymentKeyHash() {
+  // Payment key hash er bytes 1-29 af bech32-dekodet adresse
+  // Virker for Eternl, Vespr og Flint
   const addrHex = bech32ToHex(walletAddr);
   const addrBytes = h2b(addrHex);
   return b2h(addrBytes.slice(1, 29));
@@ -1663,7 +1640,7 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   const lovelace = utxo.lovelace !== undefined
     ? BigInt(utxo.lovelace)
     : BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
-  const ttl        = tip.slot + 600;
+  const ttl        = tip.slot + 3600;
   const minFeeA    = BigInt(params.min_fee_a || 44);
   const minFeeB    = BigInt(params.min_fee_b || 155381);
   const minUtxoAda = 2000000n;
@@ -1742,16 +1719,6 @@ async function buildMintTx(utxo, params, tip, policyScript, policyId, tokenName,
   let witnessCbor;
   try { witnessCbor = await walletApi.signTx(txForSigning, true); }
   catch(e) { throw new Error('Signing rejected: '+(e.info||e.message||JSON.stringify(e))); }
-
-  // Log vkey fra witness og payment key hash fra adresse
-  try {
-    const wb = h2b(witnessCbor);
-    let vkey = 'unknown';
-    for (let i = 0; i < wb.length - 33; i++) {
-      if (wb[i] === 0x58 && wb[i+1] === 0x20) { vkey = b2h(wb.slice(i+2, i+34)); break; }
-    }
-    const pkh = await getPaymentKeyHash();
-  } catch {}
 
 
   // Eternl kan returnere enten:
@@ -3178,7 +3145,20 @@ function loadLocalStorage() {
 }
 
 // Render wallet picker når extensions er injiceret (~100ms efter load)
-window.addEventListener('load', () => setTimeout(renderWalletPicker, 150));
+// Prøv at finde wallets flere gange — mobile dApp browsere injicerer langsomt
+window.addEventListener('load', () => {
+  let attempts = 0;
+  function tryRender() {
+    const available = SUPPORTED_WALLETS.filter(w => window.cardano?.[w.id]);
+    if (available.length > 0 || attempts >= 5) {
+      renderWalletPicker();
+    } else {
+      attempts++;
+      setTimeout(tryRender, 400);
+    }
+  }
+  setTimeout(tryRender, 200);
+});
 
 </script>
 </body>
