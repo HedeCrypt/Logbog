@@ -1106,8 +1106,16 @@ async function connectWallet(walletId) {
 
 async function deriveKey() {
   let result;
-  try { result = await walletApi.signData(stakeAddr, s2h(SIGN_MSG)); }
-  catch(e) { throw new Error('Signing rejected in Eternl. Please accept to derive the encryption key.'); }
+  // Prøv stake-adresse først, fall back til wallet-adresse (Eternl preprod kan afvise stake)
+  const addrsToTry = [stakeAddr, walletAddr].filter((a,i,arr) => a && arr.indexOf(a) === i);
+  let lastErr;
+  for (const addr of addrsToTry) {
+    try {
+      result = await walletApi.signData(addr, s2h(SIGN_MSG));
+      break;
+    } catch(e) { lastErr = e; continue; }
+  }
+  if (!result) throw new Error('Signing rejected. Please accept the signature request in your wallet to continue.');
 
   let sigHex = '';
   if (typeof result === 'string') sigHex = result;
