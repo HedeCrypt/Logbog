@@ -1111,21 +1111,14 @@ async function connectWallet(walletId) {
 }
 
 async function deriveKey() {
+  // Mainnet: brug stakeAddr (bagudkompatibel med eksisterende NFT-nøgler)
+  // Preprod: brug walletAddr (stakeAddr giver blank popup i Eternl på preprod)
+  const signAddr = selectedNetwork === 'mainnet' ? stakeAddr : walletAddr;
   let result;
-  let lastErr;
-  const addrsToTry = [];
-  if (stakeAddr && stakeAddr !== walletAddr) addrsToTry.push(stakeAddr);
-  addrsToTry.push(walletAddr);
-
-  for (const addr of addrsToTry) {
-    try {
-      result = await walletApi.signData(addr, s2h(SIGN_MSG));
-      if (result) break;
-    } catch(e) { lastErr = e; continue; }
-  }
-
-  if (!result) {
-    const msg = lastErr?.info || lastErr?.message || JSON.stringify(lastErr) || 'unknown';
+  try {
+    result = await walletApi.signData(signAddr, s2h(SIGN_MSG));
+  } catch(e) {
+    const msg = e?.info || e?.message || JSON.stringify(e) || 'unknown';
     throw new Error('Signing rejected: ' + msg);
   }
 
