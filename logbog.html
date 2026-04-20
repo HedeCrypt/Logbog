@@ -2796,9 +2796,9 @@ async function submitViaEternl(txCbor) {
 
 async function submitTx(signedCbor) {
   const base = NETWORKS[selectedNetwork].apiBase;
-  const res = await fetch(base+'/submittx', {
+  const res = await fetch(base+'/tx/submit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/cbor' },
+    headers: { 'project_id': bfKey, 'Content-Type': 'application/cbor' },
     body: h2b(signedCbor)
   });
   if (!res.ok) {
