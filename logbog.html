@@ -1112,8 +1112,7 @@ async function connectWallet(walletId) {
 
 async function deriveKey() {
   let result;
-  // Brug stakeAddr som primær (samme som originalt) — giver korrekt walletSignKey til at dekryptere NFT-nøgler
-  // Fallback til walletAddr hvis stake-adresse afvises (Eternl på nogle netværk)
+  let lastErr;
   const addrsToTry = [];
   if (stakeAddr && stakeAddr !== walletAddr) addrsToTry.push(stakeAddr);
   addrsToTry.push(walletAddr);
@@ -1122,10 +1121,13 @@ async function deriveKey() {
     try {
       result = await walletApi.signData(addr, s2h(SIGN_MSG));
       if (result) break;
-    } catch(e) { continue; }
+    } catch(e) { lastErr = e; continue; }
   }
 
-  if (!result) throw new Error('Signing rejected. Please accept the signature request in your wallet to continue.');
+  if (!result) {
+    const msg = lastErr?.info || lastErr?.message || JSON.stringify(lastErr) || 'unknown';
+    throw new Error('Signing rejected: ' + msg);
+  }
 
   let sigHex = '';
   if (typeof result === 'string') sigHex = result;
