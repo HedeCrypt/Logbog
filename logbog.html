@@ -1106,22 +1106,11 @@ async function connectWallet(walletId) {
 
 async function deriveKey() {
   let result;
-  const addrsToTry = [stakeAddr, walletAddr].filter((a,i,arr) => a && arr.indexOf(a) === i);
-  let lastErr;
-  for (const addr of addrsToTry) {
-    try {
-      result = await walletApi.signData(addr, s2h(SIGN_MSG));
-      break;
-    } catch(e) { lastErr = e; continue; }
-  }
-
-  // Fallback: udled nøgle fra wallet-adresse og netværk hvis signData ikke er tilgængelig
-  // Mindre sikker men giver adgang til eksisterende noter
-  if (!result) {
-    const fallbackSeed = new TextEncoder().encode(walletAddr + selectedNetwork + SIGN_MSG);
-    const hash = await crypto.subtle.digest('SHA-256', fallbackSeed);
-    walletSignKey = new Uint8Array(hash);
-    return;
+  try {
+    // Brug wallet-adresse til signData — stake_test adresse afvises af Eternl på preprod
+    result = await walletApi.signData(walletAddr, s2h(SIGN_MSG));
+  } catch(e) {
+    throw new Error('Signing rejected. Please accept the signature request in your wallet to continue.');
   }
 
   let sigHex = '';
