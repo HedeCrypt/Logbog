@@ -558,6 +558,11 @@
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:1rem;line-height:1.7;opacity:.8">
       A write key allows a device to post encrypted entries to your journal — without being able to read them.
     </div>
+    <div id="writeKeyMasterInfo" style="font-family:var(--mono);font-size:9px;background:var(--accent-dim);border:1px solid rgba(200,150,90,.2);border-radius:5px;padding:8px 10px;margin-bottom:1rem;line-height:1.6;display:none">
+      <span style="color:var(--faint);text-transform:uppercase;letter-spacing:.1em;font-size:8px">Linked to</span><br>
+      <span id="writeKeyMasterName" style="color:var(--accent)"></span>
+      <div id="writeKeyMasterPolicy" style="color:var(--faint);font-size:8px;word-break:break-all;margin-top:2px;opacity:.7"></div>
+    </div>
     <div class="settings-field">
       <label style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Token name</label>
       <input type="text" id="writeKeyTokenName" placeholder="WriteKey01" maxlength="32" spellcheck="false"
@@ -1411,6 +1416,18 @@ function showMintWriteKeyDialog() {
   document.getElementById('writeKeyStatus').style.display = 'none';
   document.getElementById('writeKeyErr').style.display = 'none';
   document.getElementById('writeKeyBtn').disabled = false;
+
+  // Vis hvilken hoved-NFT skrive-nøglen bliver knyttet til
+  const masterNft = allNfts.find(n => !n.isWriteKey);
+  const infoEl    = document.getElementById('writeKeyMasterInfo');
+  if (masterNft) {
+    document.getElementById('writeKeyMasterName').textContent = masterNft.tokenName;
+    document.getElementById('writeKeyMasterPolicy').textContent = masterNft.policyId;
+    infoEl.style.display = 'block';
+  } else {
+    infoEl.style.display = 'none';
+  }
+
   document.getElementById('writeKeyOverlay').classList.add('open');
 }
 
@@ -2670,8 +2687,11 @@ async function sendBatch() {
     }
 
     const now = new Date().toISOString();
+    const isWriteOnlyWallet = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
     drafts.forEach((d,i) => {
-      savedEntries.unshift({ text:d.text, encHex:d.encHex, txHash, noteIndex:i, totalInBatch:drafts.length, time:d.time||now });
+      // Write key wallets gemmer ikke plaintext — kan ikke dekryptere egne noter
+      const entryText = isWriteOnlyWallet ? null : d.text;
+      savedEntries.unshift({ text:entryText, encHex:d.encHex, txHash, noteIndex:i, totalInBatch:drafts.length, time:d.time||now });
     });
     drafts = [];
     saveLocalStorage();
@@ -3358,8 +3378,9 @@ function renderEntries(entries) {
     return;
   }
   el.innerHTML = entries.map((e,i) => {
+    const displayText = e.text || '[ encrypted — not readable on this device ]';
     const date    = new Date(e.time).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const preview = e.text.length > 220 ? e.text.slice(0,220).trimEnd()+'…' : null;
+    const preview = e.text && e.text.length > 220 ? e.text.slice(0,220).trimEnd()+'…' : null;
     const batch   = (e.totalInBatch||1)>1 ? `<span class="batch-tag">${(e.noteIndex||0)+1}/${e.totalInBatch}</span>` : '';
     const nftTag  = e.nftId === '__legacy__'
       ? `<span class="batch-tag" style="color:var(--danger);opacity:.7">legacy</span>`
@@ -3385,8 +3406,8 @@ function renderEntries(entries) {
       </div>
       ${preview
         ? `<div class="entry-text-preview" id="ep${i}">${esc(preview)}</div>
-           <div class="entry-full-text" id="ef${i}">${esc(e.text)}</div>`
-        : `<div class="entry-text">${esc(e.text)}</div>`
+           <div class="entry-full-text" id="ef${i}">${esc(displayText)}</div>`
+        : `<div class="entry-text${e.text?'':' entry-enc'}" id="et${i}">${esc(displayText)}</div>`
       }
       ${!e.isDraft ? `<div class="entry-enc" id="ee${i}">${e.encHex}</div>` : ''}
     </div>`;
@@ -3511,9 +3532,16 @@ function loadLocalStorage() {
     const key = selectedNetwork+'_'+walletAddr;
     const d = localStorage.getItem('kl_drafts_'+key);
     const e = localStorage.getItem('kl_entries_'+key);
-    // Ryd ved skift — sæt til tom hvis ingen cache for denne wallet
     drafts       = d ? JSON.parse(d) : [];
     savedEntries = e ? JSON.parse(e) : [];
+
+    // Write key wallets må ikke have plaintext liggende lokalt
+    const isWriteOnly = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
+    if (isWriteOnly) {
+      savedEntries = savedEntries.map(e => ({ ...e, text: null }));
+      drafts = []; // Ryd kladder — write key enheder beholder ikke kladder lokalt
+    }
+
     updateNavEntries();
     updateSidebarDrafts();
     renderCombinedJournal();
