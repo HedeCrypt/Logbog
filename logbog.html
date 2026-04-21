@@ -548,6 +548,32 @@
   </main>
 </div>
 
+<!-- WRITE KEY OVERLAY -->
+<div class="settings-overlay" id="writeKeyOverlay" onclick="if(event.target===this)closeWriteKeyDialog()">
+  <div class="settings-panel" id="writeKeyPanel">
+    <div class="settings-title">
+      <span>New Write Key</span>
+      <button class="settings-close" onclick="closeWriteKeyDialog()">×</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:1rem;line-height:1.7;opacity:.8">
+      A write key allows a device to post encrypted entries to your journal — without being able to read them.
+    </div>
+    <div class="settings-field">
+      <label style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Token name</label>
+      <input type="text" id="writeKeyTokenName" placeholder="WriteKey01" maxlength="32" spellcheck="false"
+        style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:9px 12px">
+    </div>
+    <div class="settings-field" style="margin-top:.75rem">
+      <label style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px">Display name</label>
+      <input type="text" id="writeKeyDisplayName" placeholder="Sensor 1" maxlength="64" spellcheck="false"
+        style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:9px 12px">
+    </div>
+    <div id="writeKeyStatus" style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:.75rem;display:none;line-height:1.7"></div>
+    <div id="writeKeyErr" style="font-family:var(--mono);font-size:10px;color:var(--danger);margin-top:.5rem;display:none"></div>
+    <button class="primary" onclick="doMintWriteKey()" id="writeKeyBtn" style="width:100%;margin-top:.75rem">Mint write key</button>
+  </div>
+</div>
+
 <!-- MOBILE BOTTOM NAV -->
 <nav class="mobile-nav" id="mobileNav">
   <button class="mobile-nav-btn active" id="mobileWriteBtn" onclick="showScreen('write');setMobileActive('write')">
@@ -600,13 +626,16 @@
     <div id="settingsJournalActions" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
       <div style="font-family:var(--mono);font-size:8px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Journal keys</div>
       <button onclick="closeSettings();showNewLogbookScreen()" id="settingsNewKeyBtn">+ New journal key</button>
+      <button onclick="closeSettings();showMintWriteKeyDialog()" id="settingsWriteKeyBtn">+ New write key</button>
       <button onclick="closeSettings();showScreen('transfer')" id="settingsTransferBtn" style="border-color:rgba(192,84,58,.3);color:var(--danger)">Transfer journal</button>
     </div>
   </div>
 </div>
 
 <script>
-const METADATA_LABEL = 1337;
+const METADATA_LABEL   = 1337;
+const TRANSFER_LABEL   = 1338;
+const WRITE_KEY_LABEL  = 1339;
 const SIGN_MSG = 'cardano-logbog-v1';
 
 const NETWORKS = {
@@ -984,6 +1013,22 @@ function clearNote() {
 function encryptWithNft(text, nftId) {
   const nft = allNfts.find(n => n.policyId === nftId) || allNfts[0];
   if (!nft) throw new Error('No NFT available for encryption.');
+
+  // Skrive-NFT: kryptér asymmetrisk med hoved-NFTs pubkey
+  if (nft.isWriteKey && nft.recipientPubKey) {
+    const ephemeral = nacl.box.keyPair();
+    const nonce = nacl.randomBytes(24);
+    const box = nacl.box(new TextEncoder().encode(text), nonce, nft.recipientPubKey, ephemeral.secretKey);
+    // Format: 1 byte flag(0x01) + 32 bytes ephemeral pubkey + 24 bytes nonce + ciphertext
+    const out = new Uint8Array(1 + 32 + 24 + box.length);
+    out[0] = 0x01; // asymmetrisk flag
+    out.set(ephemeral.publicKey, 1);
+    out.set(nonce, 33);
+    out.set(box, 57);
+    return b2h(out);
+  }
+
+  // Normal hoved-NFT: symmetrisk secretbox
   const nonce = nacl.randomBytes(24);
   const box   = nacl.secretbox(new TextEncoder().encode(text), nonce, nft.cryptoKey);
   const out   = new Uint8Array(24+box.length);
@@ -995,10 +1040,29 @@ function encryptWithNft(text, nftId) {
 function decryptHexMulti(hex) {
   const raw = h2b(hex);
   if (!raw.length) return null;
+
+  // Asymmetrisk format (0x01 flag) — krypteret med hoved-NFTs pubkey
+  if (raw[0] === 0x01 && raw.length > 57) {
+    const senderPub = raw.slice(1, 33);
+    const nonce     = raw.slice(33, 57);
+    const box       = raw.slice(57);
+    for (const nft of allNfts) {
+      if (nft.isWriteKey) continue; // skrive-NFTer kan ikke dekryptere
+      if (!nft.privKey) continue;
+      try {
+        const dec = nacl.box.open(box, nonce, senderPub, nft.privKey);
+        if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
+      } catch {}
+    }
+    return null;
+  }
+
+  // Symmetrisk format — normal hoved-NFT
   const nonce = raw.slice(0, 24);
   const box   = raw.slice(24);
 
   for (const nft of allNfts) {
+    if (nft.isWriteKey) continue;
     try {
       const dec = nacl.secretbox.open(box, nonce, nft.cryptoKey);
       if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
@@ -1014,9 +1078,6 @@ function decryptHexMulti(hex) {
     } catch {}
   }
 
-  if (allNfts.length > 0) {
-  } else {
-  }
   return null;
 }
 
@@ -1111,16 +1172,9 @@ async function connectWallet(walletId) {
 }
 
 async function deriveKey() {
-  // Mainnet: brug stakeAddr (bagudkompatibel med eksisterende NFT-nøgler)
-  // Preprod: brug walletAddr (stakeAddr giver blank popup i Eternl på preprod)
-  const signAddr = selectedNetwork === 'mainnet' ? stakeAddr : walletAddr;
   let result;
-  try {
-    result = await walletApi.signData(signAddr, s2h(SIGN_MSG));
-  } catch(e) {
-    const msg = e?.info || e?.message || JSON.stringify(e) || 'unknown';
-    throw new Error('Signing rejected: ' + msg);
-  }
+  try { result = await walletApi.signData(stakeAddr, s2h(SIGN_MSG)); }
+  catch(e) { throw new Error('Signing rejected in Eternl. Please accept to derive the encryption key.'); }
 
   let sigHex = '';
   if (typeof result === 'string') sigHex = result;
@@ -1181,15 +1235,38 @@ async function detectJournalNFT() {
         if (onchain[policyId]?.[tokenName])           tokenData = onchain[policyId][tokenName];
         else if (onchain[tokenName])                   tokenData = onchain[tokenName];
         else if (onchain.journalKey !== undefined)     tokenData = onchain;
+        else if (onchain.writeKey !== undefined)       tokenData = onchain;
         else {
-          // Dyk ét niveau ned og søg i alle værdier
           for (const v of Object.values(onchain)) {
             if (v && typeof v === 'object') {
               if (v[tokenName]) { tokenData = v[tokenName]; break; }
-              if (v.journalKey !== undefined) { tokenData = v; break; }
+              if (v.journalKey !== undefined || v.writeKey !== undefined) { tokenData = v; break; }
             }
           }
         }
+
+        // Skrive-NFT — indeholder masterPubKey, ingen privKey
+        if (tokenData?.writeKey) {
+          const rawMasterPub = tokenData.masterPubKey;
+          if (rawMasterPub) {
+            const masterPubHex = Array.isArray(rawMasterPub)
+              ? rawMasterPub.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+              : (typeof rawMasterPub==='string' ? rawMasterPub.replace(/^0x/i,'') : '');
+            const rawWritePub = tokenData.writePubKey;
+            const writePubHex = rawWritePub ? (Array.isArray(rawWritePub)
+              ? rawWritePub.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
+              : (typeof rawWritePub==='string' ? rawWritePub.replace(/^0x/i,'') : '')) : '';
+            if (masterPubHex) {
+              allNfts.push(makeWriteKeyEntry(
+                writePubHex ? h2b(writePubHex) : null,
+                h2b(masterPubHex),
+                policyId, tokenName
+              ));
+            }
+          }
+          continue;
+        }
+
         if (!tokenData?.journalKey) continue;
 
         let encPrivKeyBytes = null;
@@ -1253,15 +1330,18 @@ async function detectJournalNFT() {
 
   if (!allNfts.length) return false;
 
-  // Gendan gemte valg
+  // Gendan gemte valg — kun hoved-NFTer kan være aktive/write targets
+  const masterNfts = allNfts.filter(n => !n.isWriteKey);
+  if (!masterNfts.length) return false;
+
   const savedActive = loadNftSelection();
   if (savedActive && savedActive.length) {
-    activeNftIds = new Set(savedActive.filter(id => allNfts.some(n => n.policyId === id)));
+    activeNftIds = new Set(savedActive.filter(id => masterNfts.some(n => n.policyId === id)));
     writeNftId   = savedActive[0];
   }
   if (!activeNftIds.size) {
-    activeNftIds = new Set(allNfts.map(n => n.policyId));
-    writeNftId   = allNfts[0].policyId;
+    activeNftIds = new Set(masterNfts.map(n => n.policyId));
+    writeNftId   = masterNfts[0].policyId;
   }
 
   // Sæt bagudkompatibel cryptoKey til den primære NFT
@@ -1287,9 +1367,71 @@ function makeNftEntry(privKey, policyId, tokenName) {
     privKey,
     pubKey:    nacl.box.keyPair.fromSecretKey(privKey).publicKey,
     cryptoKey: privKey.slice(0, 32),
+    isWriteKey: false,
   };
   return entry;
 }
+
+function makeWriteKeyEntry(writePubKey, masterPubKey, policyId, tokenName) {
+  return {
+    policyId,
+    tokenName,
+    isWriteKey:       true,
+    writePubKey,
+    recipientPubKey:  masterPubKey, // hoved-NFTs pubkey — kryptér til denne
+    privKey:          null,
+    cryptoKey:        null,
+  };
+}
+
+function showMintWriteKeyDialog() {
+  document.getElementById('writeKeyTokenName').value = '';
+  document.getElementById('writeKeyDisplayName').value = '';
+  document.getElementById('writeKeyStatus').style.display = 'none';
+  document.getElementById('writeKeyErr').style.display = 'none';
+  document.getElementById('writeKeyBtn').disabled = false;
+  document.getElementById('writeKeyOverlay').classList.add('open');
+}
+
+function closeWriteKeyDialog() {
+  document.getElementById('writeKeyOverlay').classList.remove('open');
+}
+
+async function doMintWriteKey() {
+  const tokenName   = document.getElementById('writeKeyTokenName').value.trim().replace(/\s+/g,'');
+  const displayName = document.getElementById('writeKeyDisplayName').value.trim() || tokenName;
+  const statusEl    = document.getElementById('writeKeyStatus');
+  const errEl       = document.getElementById('writeKeyErr');
+  const btn         = document.getElementById('writeKeyBtn');
+
+  errEl.style.display = 'none';
+  if (!tokenName) { errEl.textContent = 'Please enter a token name.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  const setStatus = msg => { statusEl.textContent = msg; statusEl.style.display = 'block'; };
+
+  try {
+    setStatus('Minting write key NFT…');
+    const { policyId, tokenName: tn, writePubKey, txHash } = await mintWriteKey(tokenName, displayName);
+
+    setStatus('✓ Write key minted! tx: '+txHash.slice(0,16)+'…\nSend the NFT to the write-only device.');
+    btn.disabled = false;
+
+    // Vis policyId så brugeren kan notere det
+    errEl.style.display = 'none';
+    statusEl.innerHTML = `
+      <div style="color:var(--accent)">✓ Write key minted</div>
+      <div style="margin-top:4px;opacity:.7">Policy ID:</div>
+      <div style="font-size:9px;word-break:break-all;user-select:all;-webkit-user-select:all">${policyId}</div>
+      <div style="margin-top:6px;opacity:.7">Send this NFT to the write-only device after it confirms.</div>
+    `;
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
 
 function updateNftBadge() {
   const badge = document.getElementById('nftBadge');
@@ -1611,6 +1753,96 @@ async function mintJournalNFT() {
     btn.disabled = false;
     reportError(e.message, 'mint');
   }
+}
+
+// ── Mint skrive-NFT ───────────────────────────────────────────────
+async function mintWriteKey(tokenName, displayName) {
+  const masterNft = allNfts.find(n => !n.isWriteKey);
+  if (!masterNft) throw new Error('No master journal key found.');
+
+  // Skrive-NFT's eget keypair (bruges til at signere/kryptere asymmetrisk)
+  const writeKeyPair  = nacl.box.keyPair();
+  const writePubKey   = writeKeyPair.publicKey;
+
+  // Hoved-NFT's pubkey bruges som recipientPubKey — noter krypteres til hoved-NFT
+  const masterPubKey  = masterNft.pubKey;
+
+  const params        = await bfGet('epochs/latest/parameters');
+  const tip           = await bfGet('blocks/latest');
+  const paymentKeyHash = getPaymentKeyHash();
+  const lockSlot      = tip.slot + 3600;
+  const policyScript  = buildNativeScript(paymentKeyHash, lockSlot);
+  const policyId      = await computePolicyId(policyScript);
+  const tokenNameHex  = b2h(new TextEncoder().encode(tokenName));
+
+  // CIP-25 metadata — indeholder masterPubKey og writeKey's pubKey
+  // Ingen privKey — skrive-NFT kan ikke dekryptere
+  const nftMetadata = {
+    [policyId]: {
+      [tokenName]: {
+        name:          displayName,
+        writeKey:      1,
+        masterPolicy:  masterNft.policyId,
+        masterPubKey:  chunkBytes(masterPubKey, 64),
+        writePubKey:   chunkBytes(writePubKey, 64),
+        version:       1,
+      }
+    }
+  };
+
+  // Find UTxO
+  let utxo = null;
+  try {
+    const walletUtxos = await walletApi.getUtxos();
+    if (walletUtxos?.length) {
+      for (const raw of walletUtxos) {
+        try {
+          const u = decodeUtxoCbor(raw);
+          if (u && !u.hasTokens && u.lovelace >= 3000000n) {
+            if (!utxo || u.lovelace > utxo.lovelace) utxo = u;
+          }
+        } catch { continue; }
+      }
+    }
+  } catch {}
+  if (!utxo) {
+    const bfUtxos = await bfGet('addresses/'+walletAddr+'/utxos');
+    const found = bfUtxos.find(u => BigInt(u.amount.find(a=>a.unit==='lovelace').quantity) >= 3000000n);
+    if (!found) throw new Error('Need at least 3 ADA to mint.');
+    utxo = { tx_hash: found.tx_hash, tx_index: found.tx_index,
+      lovelace: BigInt(found.amount.find(a=>a.unit==='lovelace').quantity), address: walletAddr };
+  }
+
+  // Mint NFT
+  const txCbor  = await buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata);
+  const txHash  = await submitTx(txCbor);
+
+  // Send registreringstransaktion (label 1339) — knytter skrive-NFT til hoved-NFT on-chain
+  // Vent lidt så wallet UTxO opdateres
+  await sleep(3000);
+  await sendWriteKeyRegistration(policyId, masterNft.policyId);
+
+  return { policyId, tokenName, writePubKey, txHash };
+}
+
+// Send label-1339 registrering — knytter writePolicyId til masterPolicyId
+async function sendWriteKeyRegistration(writePolicyId, masterPolicyId) {
+  try {
+    const params  = await bfGet('epochs/latest/parameters');
+    const tip     = await bfGet('blocks/latest');
+    const utxos   = await walletApi.getUtxos();
+    let utxo = null;
+    for (const raw of utxos||[]) {
+      try {
+        const u = decodeUtxoCbor(raw);
+        if (u && !u.hasTokens && u.lovelace >= 2000000n) { utxo = u; break; }
+      } catch {}
+    }
+    if (!utxo) return; // Fejl stille — registrering er ikke kritisk
+
+    const meta = { [WRITE_KEY_LABEL]: { writeKey: writePolicyId, for: masterPolicyId } };
+    await buildAndSubmitMetaTx(utxo, params, tip, meta);
+  } catch {}
 }
 
 // Hent payment key hash direkte fra wallet adresse bytes — hurtig og korrekt
@@ -2784,6 +3016,53 @@ async function getTxCbor(txHash) {
   return data?.cbor || null;
 }
 
+// Byg og submit en simpel metadata-only transaktion (ingen mint, ingen tokens)
+async function buildAndSubmitMetaTx(utxo, params, tip, metaObj) {
+  const lovelace  = utxo.lovelace !== undefined ? BigInt(utxo.lovelace)
+    : BigInt(utxo.amount.find(a=>a.unit==='lovelace').quantity);
+  const minFeeA   = BigInt(params.min_fee_a || 44);
+  const minFeeB   = BigInt(params.min_fee_b || 155381);
+  const ttl       = tip.slot + 3600;
+  const addrBytes = h2b(bech32ToHex(utxo.address || walletAddr));
+  const input     = cborArray([cborBytes(h2b(utxo.tx_hash)), cborUint(utxo.tx_index)]);
+  const inputs    = cborArray([input]);
+  const auxDataBytes = encodeCborMap(
+    Object.entries(metaObj).map(([k,v]) => [cborUint(parseInt(k)), encodeCborValue(v)])
+  );
+  const auxHash = await blake2b256(auxDataBytes);
+
+  function buildBody(fee) {
+    const change = lovelace - fee;
+    if (change < 1000000n) throw new Error('Not enough ADA for registration tx.');
+    return encodeCborMap([
+      [cborUint(0), inputs],
+      [cborUint(1), cborArray([cborArray([cborBytes(addrBytes), cborUint(change)])])],
+      [cborUint(2), cborUint(fee)],
+      [cborUint(3), cborUint(ttl)],
+      [cborUint(7), cborBytes(auxHash)],
+    ]);
+  }
+
+  let fee = minFeeA * 300n + minFeeB;
+  for (let i = 0; i < 3; i++) {
+    const b = buildBody(fee);
+    fee = minFeeA * BigInt(b.length + 150) + minFeeB + 1000n;
+  }
+
+  const txBody   = buildBody(fee);
+  const txForSig = b2h(cborArray([txBody, encodeCborMap([]), cborBool(true), auxDataBytes]));
+  const witCbor  = await walletApi.signTx(txForSig, true);
+  const witBytes = h2b(witCbor);
+  let finalWit;
+  if (witBytes[0] === 0x84 || witBytes[0] === 0x83) {
+    finalWit = extractCborArrayItem(witBytes, 1) || witBytes;
+  } else {
+    finalWit = witBytes;
+  }
+  const finalTx = b2h(cborArray([txBody, finalWit, cborBool(true), auxDataBytes]));
+  return submitTx(finalTx);
+}
+
 function friendlySubmitError(raw) {
   const s = typeof raw === 'string' ? raw : JSON.stringify(raw);
   if (s.includes('InvalidWitnessesUTXOW')) {
@@ -2836,6 +3115,36 @@ async function loadEntries() {
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
       cached.forEach(a => searchAddrs.add(a));
+    } catch {}
+
+    // Scan label 1339 for skrive-NFTer registreret til vores hoved-NFT
+    const masterPolicyIds = allNfts.filter(n => !n.isWriteKey).map(n => n.policyId);
+    try {
+      for (let page = 1; page <= 5; page++) {
+        const items = await bfGet('metadata/txs/labels/'+WRITE_KEY_LABEL+'?order=desc&count=100&page='+page);
+        if (!items.length) break;
+        for (const item of items) {
+          try {
+            const m = item.json_metadata;
+            if (!m?.writeKey || !m?.for) continue;
+            if (!masterPolicyIds.includes(m.for)) continue;
+            // Find den matchende masterNft og hent writeKey NFT metadata
+            const masterNft = allNfts.find(n => n.policyId === m.for);
+            if (!masterNft) continue;
+            // Tilføj skrive-adresse til søgeliste
+            const utxos = await bfGet('addresses/'+walletAddr+'/utxos').catch(()=>[]);
+            // Find adressen der holder skrive-NFT via policyId
+            const registrant = item.tx_hash;
+            const txUtxos = await bfGet('txs/'+registrant+'/utxos').catch(()=>null);
+            if (txUtxos?.inputs) {
+              for (const inp of txUtxos.inputs) {
+                if (inp.address) searchAddrs.add(inp.address);
+              }
+            }
+          } catch { continue; }
+        }
+        if (items.length < 100) break;
+      }
     } catch {}
 
     // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
