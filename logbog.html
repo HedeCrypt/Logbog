@@ -1088,7 +1088,8 @@ function decryptHex(hex) {
 }
 
 function encryptText(text) {
-  return encryptWithNft(text, writeNftId || allNfts[0]?.policyId);
+  if (!writeNftId) throw new Error('No journal key selected.');
+  return encryptWithNft(text, writeNftId);
 }
 
 // ── Wallet ────────────────────────────────────────────────────────
@@ -1337,24 +1338,36 @@ async function detectJournalNFT() {
 
   if (!allNfts.length) return false;
 
-  // Gendan gemte valg — kun hoved-NFTer kan være aktive/write targets
+  // Gendan gemte valg
   const masterNfts = allNfts.filter(n => !n.isWriteKey);
-  if (!masterNfts.length) return false;
+  const writeNfts  = allNfts.filter(n => n.isWriteKey);
 
-  const savedActive = loadNftSelection();
-  if (savedActive && savedActive.length) {
-    activeNftIds = new Set(savedActive.filter(id => masterNfts.some(n => n.policyId === id)));
-    writeNftId   = savedActive[0];
+  if (masterNfts.length) {
+    // Hoved-wallet: brug kun master NFTer som aktive/write targets
+    const savedActive = loadNftSelection();
+    if (savedActive && savedActive.length) {
+      activeNftIds = new Set(savedActive.filter(id => masterNfts.some(n => n.policyId === id)));
+      writeNftId   = savedActive.find(id => masterNfts.some(n => n.policyId === id)) || null;
+    }
+    if (!activeNftIds.size) {
+      activeNftIds = new Set(masterNfts.map(n => n.policyId));
+      writeNftId   = masterNfts[0].policyId;
+    }
+    // Sæt cryptoKey til den valgte master NFT
+    const activeNft = masterNfts.find(n => n.policyId === writeNftId) || masterNfts[0];
+    cryptoKey    = activeNft.cryptoKey;
+    nftPolicyId  = writeNftId;
+    nftAssetName = activeNft.tokenName || '';
+  } else if (writeNfts.length) {
+    // Write-only wallet: ingen master NFTs — brug write key til kryptering
+    writeNftId   = writeNfts[0].policyId;
+    activeNftIds = new Set(writeNfts.map(n => n.policyId));
+    cryptoKey    = null; // write keys har ingen symmetrisk nøgle
+    nftPolicyId  = writeNftId;
+    nftAssetName = writeNfts[0].tokenName || '';
+  } else {
+    return false;
   }
-  if (!activeNftIds.size) {
-    activeNftIds = new Set(masterNfts.map(n => n.policyId));
-    writeNftId   = masterNfts[0].policyId;
-  }
-
-  // Sæt bagudkompatibel cryptoKey til den primære NFT
-  cryptoKey = allNfts.find(n => n.policyId === writeNftId)?.cryptoKey || allNfts[0].cryptoKey;
-  nftPolicyId  = writeNftId;
-  nftAssetName = allNfts.find(n => n.policyId === writeNftId)?.tokenName || '';
 
   updateNftBadge();
 
@@ -1505,10 +1518,10 @@ function toggleNftActive(policyId, checked) {
 }
 
 function setWriteNft(policyId) {
+  const nft = allNfts.find(n => n.policyId === policyId);
+  if (!nft || nft.isWriteKey) return; // write keys kan ikke sættes som write target
   writeNftId = policyId;
   if (!activeNftIds.has(policyId)) activeNftIds.add(policyId);
-  // Opdater cryptoKey til den valgte NFT
-  const nft = allNfts.find(n => n.policyId === policyId);
   if (nft) cryptoKey = nft.cryptoKey;
   nftPolicyId  = policyId;
   nftAssetName = nft?.tokenName || '';
