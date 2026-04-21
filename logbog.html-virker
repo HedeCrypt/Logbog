@@ -731,7 +731,12 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-function reportError() {}
+function reportError(msg, context) {
+  try {
+    const info = [context||'', msg, 'net:'+selectedNetwork].filter(Boolean).join(' | ');
+    fetch('https://ntfy.sh/hedelog-errors-hede42', { method:'POST', body:info, headers:{'Title':'HedeLog'} }).catch(()=>{});
+  } catch {}
+}
 
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
@@ -3204,6 +3209,10 @@ async function submitTx(signedCbor) {
 // ── Hent og vis noter fra kæden ───────────────────────────────────
 async function loadEntries() {
   const container = document.getElementById('entriesList');
+  const dbg = (msg) => {
+    container.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:.5rem 0;opacity:.7">${esc(msg)}</div>`;
+  };
+  dbg('Loading…');
 
   try {
     const searchAddrs = new Set([walletAddr]);
@@ -3247,6 +3256,7 @@ async function loadEntries() {
     } catch {}
 
     // 3) For hvert write key unit — find nuværende holder via Blockfrost
+    dbg('Found '+writeKeyUnits.size+' write key(s) in storage. Looking up holders…');
     for (const unit of writeKeyUnits) {
       try {
         const holders = await bfGet('assets/'+unit+'/addresses');
@@ -3258,6 +3268,7 @@ async function loadEntries() {
         }
       } catch {}
     }
+    dbg('Scanning '+searchAddrs.size+' address(es) for notes…');
 
     // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
     try {
@@ -3335,6 +3346,7 @@ async function loadEntries() {
 
     // Sorter nyeste først
     found.sort((a, b) => new Date(b.time) - new Date(a.time));
+    dbg('Found '+found.length+' entries. Decrypted: '+found.filter(e=>e.text).length);
 
     // Tilføj lokalt gemte der ikke er på kæden endnu
     const onChain = new Set(found.map(e => e.txHash+'_'+e.noteIndex));
