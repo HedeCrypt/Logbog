@@ -1159,8 +1159,13 @@ async function connectWallet(walletId) {
 
     if (nftFound) {
       showScreen('write');
-      // Opdater journal sidebar med noter fra kæden
       loadEntries().then(() => updateNavEntries()).catch(()=>{});
+
+      // Hvis denne wallet kun har write keys — registrér adressen så master kan finde vores noter
+      const hasOnlyWriteKeys = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
+      if (hasOnlyWriteKeys) {
+        registerWriteKeyDevice().catch(()=>{});
+      }
     } else {
       // Ingen NFT — vis setup skærm
       showScreen('setup');
@@ -1257,10 +1262,12 @@ async function detectJournalNFT() {
               ? rawWritePub.map(c => (typeof c==='string'?c:c?.bytes||'').replace(/^0x/i,'')).join('')
               : (typeof rawWritePub==='string' ? rawWritePub.replace(/^0x/i,'') : '')) : '';
             if (masterPubHex) {
+              const masterPolicyId = typeof tokenData.masterPolicy === 'string' ? tokenData.masterPolicy : '';
               allNfts.push(makeWriteKeyEntry(
                 writePubHex ? h2b(writePubHex) : null,
                 h2b(masterPubHex),
-                policyId, tokenName
+                policyId, tokenName,
+                masterPolicyId
               ));
             }
           }
@@ -1372,13 +1379,14 @@ function makeNftEntry(privKey, policyId, tokenName) {
   return entry;
 }
 
-function makeWriteKeyEntry(writePubKey, masterPubKey, policyId, tokenName) {
+function makeWriteKeyEntry(writePubKey, masterPubKey, policyId, tokenName, masterPolicyId) {
   return {
     policyId,
     tokenName,
     isWriteKey:       true,
     writePubKey,
-    recipientPubKey:  masterPubKey, // hoved-NFTs pubkey — kryptér til denne
+    recipientPubKey:  masterPubKey,
+    masterPolicy:     masterPolicyId || '',
     privKey:          null,
     cryptoKey:        null,
   };
@@ -1838,10 +1846,41 @@ async function sendWriteKeyRegistration(writePolicyId, masterPolicyId) {
         if (u && !u.hasTokens && u.lovelace >= 2000000n) { utxo = u; break; }
       } catch {}
     }
-    if (!utxo) return; // Fejl stille — registrering er ikke kritisk
-
+    if (!utxo) return;
     const meta = { [WRITE_KEY_LABEL]: { writeKey: writePolicyId, for: masterPolicyId } };
     await buildAndSubmitMetaTx(utxo, params, tip, meta);
+  } catch {}
+}
+
+// Write key device registrerer sin nuværende adresse så master wallet kan finde noter
+async function registerWriteKeyDevice() {
+  const regKey = 'kl_writereg_'+selectedNetwork+'_'+walletAddr;
+  if (localStorage.getItem(regKey)) return; // Allerede registreret fra denne adresse
+
+  try {
+    const writeNfts = allNfts.filter(n => n.isWriteKey);
+    if (!writeNfts.length) return;
+    const params = await bfGet('epochs/latest/parameters');
+    const tip    = await bfGet('blocks/latest');
+    const utxos  = await walletApi.getUtxos();
+    let utxo = null;
+    for (const raw of utxos||[]) {
+      try {
+        const u = decodeUtxoCbor(raw);
+        if (u && !u.hasTokens && u.lovelace >= 2000000n) { utxo = u; break; }
+      } catch {}
+    }
+    if (!utxo) return;
+
+    // Send registrering med adresse + write key policyId + master policyId
+    const wn = writeNfts[0];
+    const meta = { [WRITE_KEY_LABEL]: {
+      writeKey: wn.policyId,
+      for:      wn.masterPolicy || '',
+      addr:     walletAddr
+    }};
+    await buildAndSubmitMetaTx(utxo, params, tip, meta);
+    localStorage.setItem(regKey, '1');
   } catch {}
 }
 
@@ -3126,19 +3165,21 @@ async function loadEntries() {
         for (const item of items) {
           try {
             const m = item.json_metadata;
-            if (!m?.writeKey || !m?.for) continue;
-            if (!masterPolicyIds.includes(m.for)) continue;
-            // Find den matchende masterNft og hent writeKey NFT metadata
-            const masterNft = allNfts.find(n => n.policyId === m.for);
-            if (!masterNft) continue;
-            // Tilføj skrive-adresse til søgeliste
-            const utxos = await bfGet('addresses/'+walletAddr+'/utxos').catch(()=>[]);
-            // Find adressen der holder skrive-NFT via policyId
-            const registrant = item.tx_hash;
-            const txUtxos = await bfGet('txs/'+registrant+'/utxos').catch(()=>null);
-            if (txUtxos?.inputs) {
-              for (const inp of txUtxos.inputs) {
-                if (inp.address) searchAddrs.add(inp.address);
+            // Håndter enkelt registrering: { writeKey, for, addr }
+            const regs = m?.registrations ? m.registrations : (m?.writeKey ? [m] : []);
+            for (const reg of regs) {
+              if (!reg?.for || !masterPolicyIds.includes(reg.for)) continue;
+              // Brug addr feltet direkte hvis tilgængeligt
+              if (reg.addr && typeof reg.addr === 'string') {
+                searchAddrs.add(reg.addr);
+              } else {
+                // Fallback: hent afsender-adresse fra tx inputs
+                const txUtxos = await bfGet('txs/'+item.tx_hash+'/utxos').catch(()=>null);
+                if (txUtxos?.inputs) {
+                  for (const inp of txUtxos.inputs) {
+                    if (inp.address) searchAddrs.add(inp.address);
+                  }
+                }
               }
             }
           } catch { continue; }
