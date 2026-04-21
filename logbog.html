@@ -1057,14 +1057,15 @@ function decryptHexMulti(hex) {
     const senderPub = raw.slice(1, 33);
     const nonce     = raw.slice(33, 57);
     const box       = raw.slice(57);
-    for (const nft of allNfts) {
-      if (nft.isWriteKey) continue; // skrive-NFTer kan ikke dekryptere
-      if (!nft.privKey) continue;
+    const masterNfts = allNfts.filter(n => !n.isWriteKey && n.privKey);
+    reportError('asymmetric decrypt attempt, masterNfts='+masterNfts.length+' rawLen='+raw.length, 'decrypt-asym');
+    for (const nft of masterNfts) {
       try {
         const dec = nacl.box.open(box, nonce, senderPub, nft.privKey);
-        if (dec) return { text: new TextDecoder().decode(dec), nftId: nft.policyId };
-      } catch {}
+        if (dec) { reportError('decrypt OK nftId='+nft.policyId.slice(0,12), 'decrypt-ok'); return { text: new TextDecoder().decode(dec), nftId: nft.policyId }; }
+      } catch(e) { reportError('decrypt err: '+e.message, 'decrypt-err'); }
     }
+    reportError('asymmetric decrypt FAILED', 'decrypt-fail');
     return null;
   }
 
@@ -1873,8 +1874,17 @@ async function mintWriteKey(tokenName, displayName) {
   const txCbor  = await buildMintTx(utxo, params, tip, policyScript, policyId, tokenName, tokenNameHex, nftMetadata);
   const txHash  = await submitTx(txCbor);
 
-  // Send registreringstransaktion (label 1339) — knytter skrive-NFT til hoved-NFT on-chain
-  // Gem fuld asset unit (policyId + tokenNameHex) så master kan finde nuværende holder
+  // Gem write key unit i master wallet's localStorage så loadEntries altid kan finde den
+  try {
+    const storageKey = 'kl_writekeys_'+selectedNetwork+'_'+masterNft.policyId;
+    const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    if (!existing.includes(policyId + tokenNameHex)) {
+      existing.push(policyId + tokenNameHex);
+      localStorage.setItem(storageKey, JSON.stringify(existing));
+    }
+  } catch {}
+
+  // Send registreringstransaktion (label 1339)
   await sleep(3000);
   await sendWriteKeyRegistration(policyId + tokenNameHex, masterNft.policyId);
 
@@ -3225,40 +3235,53 @@ async function loadEntries() {
       cached.forEach(a => searchAddrs.add(a));
     } catch {}
 
-    // Scan label 1339 for write keys registreret til vores hoved-NFT
-    // Brug assets/{unit}/addresses til at finde nuværende holder — virker altid
+    // Find write key holders — brug localStorage liste + label-1339 som backup
     const masterPolicyIds = allNfts.filter(n => !n.isWriteKey).map(n => n.policyId);
-    await reportError('scanning 1339, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
+    await reportError('scanning write keys, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
+
+    const writeKeyUnits = new Set();
+
+    // 1) Fra localStorage (sat ved mint)
+    for (const mpid of masterPolicyIds) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('kl_writekeys_'+selectedNetwork+'_'+mpid) || '[]');
+        stored.forEach(u => writeKeyUnits.add(u));
+      } catch {}
+    }
+
+    // 2) Fra label-1339 on-chain registreringer
     try {
       for (let page = 1; page <= 5; page++) {
         const items = await bfGet('metadata/txs/labels/'+WRITE_KEY_LABEL+'?order=desc&count=100&page='+page);
         if (!items.length) break;
-        await reportError('1339 items='+items.length+' first='+JSON.stringify(items[0]?.json_metadata).slice(0,80), 'loadentries-1339');
+        await reportError('1339 items='+items.length, 'loadentries-1339');
         for (const item of items) {
           try {
             const m = item.json_metadata;
             const regs = m?.registrations ? m.registrations : (m?.writeKey ? [m] : []);
             for (const reg of regs) {
               if (!reg?.for || !masterPolicyIds.includes(reg.for)) continue;
-              // writeKey er nu fuld asset unit (policyId + tokenNameHex)
-              const unit = reg.writeKey;
-              if (!unit || unit.length < 56) continue;
-              // Find nuværende holder via Blockfrost assets/{unit}/addresses
-              try {
-                const holders = await bfGet('assets/'+unit+'/addresses');
-                for (const h of holders||[]) {
-                  if (h.address) {
-                    await reportError('write key holder: '+h.address.slice(0,20), 'loadentries-holder');
-                    searchAddrs.add(h.address);
-                  }
-                }
-              } catch {}
+              if (reg.writeKey && reg.writeKey.length >= 56) writeKeyUnits.add(reg.writeKey);
             }
           } catch { continue; }
         }
         if (items.length < 100) break;
       }
     } catch {}
+
+    // 3) For hvert write key unit — find nuværende holder via Blockfrost
+    await reportError('write key units found: '+writeKeyUnits.size, 'loadentries-units');
+    for (const unit of writeKeyUnits) {
+      try {
+        const holders = await bfGet('assets/'+unit+'/addresses');
+        for (const h of holders||[]) {
+          if (h.address) {
+            await reportError('holder: '+h.address.slice(0,20), 'loadentries-holder');
+            searchAddrs.add(h.address);
+          }
+        }
+      } catch {}
+    }
 
     // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
     try {
@@ -3291,6 +3314,7 @@ async function loadEntries() {
 
     const found = [];
     const seenTx = new Set();
+    await reportError('searchAddrs='+[...searchAddrs].map(a=>a.slice(0,16)).join(','), 'loadentries-addrs');
 
     for (const addr of searchAddrs) {
       try {
@@ -3335,6 +3359,7 @@ async function loadEntries() {
 
     // Sorter nyeste først
     found.sort((a, b) => new Date(b.time) - new Date(a.time));
+    await reportError('found='+found.length+' from chain', 'loadentries-result');
 
     // Tilføj lokalt gemte der ikke er på kæden endnu
     const onChain = new Set(found.map(e => e.txHash+'_'+e.noteIndex));
