@@ -731,11 +731,10 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
-async function reportError(msg, context) {
+function reportError(msg, context) {
   try {
     const info = [context||'', msg, 'net:'+selectedNetwork].filter(Boolean).join(' | ');
-    await fetch('https://ntfy.sh/'+DEV_ERROR_TOPIC, { method:'POST', body:info, headers:{'Title':'HedeLog'} });
+    fetch('https://ntfy.sh/hedelog-errors-hede42', { method:'POST', body:info, headers:{'Title':'HedeLog'} }).catch(()=>{});
   } catch {}
 }
 
@@ -1058,14 +1057,12 @@ function decryptHexMulti(hex) {
     const nonce     = raw.slice(33, 57);
     const box       = raw.slice(57);
     const masterNfts = allNfts.filter(n => !n.isWriteKey && n.privKey);
-    reportError('asymmetric decrypt attempt, masterNfts='+masterNfts.length+' rawLen='+raw.length, 'decrypt-asym');
     for (const nft of masterNfts) {
       try {
         const dec = nacl.box.open(box, nonce, senderPub, nft.privKey);
         if (dec) { reportError('decrypt OK nftId='+nft.policyId.slice(0,12), 'decrypt-ok'); return { text: new TextDecoder().decode(dec), nftId: nft.policyId }; }
       } catch(e) { reportError('decrypt err: '+e.message, 'decrypt-err'); }
     }
-    reportError('asymmetric decrypt FAILED', 'decrypt-fail');
     return null;
   }
 
@@ -1163,15 +1160,6 @@ async function connectWallet(walletId) {
     if (btn) btn.textContent = 'Checking for journal NFT…';
     const nftFound = await detectJournalNFT();
 
-    // Debug: log hvad detectJournalNFT fandt
-    await reportError(
-      'nftFound='+nftFound+' allNfts='+allNfts.length+
-      ' writeKeys='+allNfts.filter(n=>n.isWriteKey).length+
-      ' masterKeys='+allNfts.filter(n=>!n.isWriteKey).length+
-      ' nfts='+allNfts.map(n=>(n.isWriteKey?'W:':'M:')+n.tokenName).join(','),
-      'detect-result'
-    );
-
     document.getElementById('newNoteBtn').disabled = false;
 
     loadLocalStorage();
@@ -1184,7 +1172,7 @@ async function connectWallet(walletId) {
       loadEntries().then(() => updateNavEntries()).catch(()=>{});
 
       const hasOnlyWriteKeys = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
-      await reportError('hasOnlyWriteKeys='+hasOnlyWriteKeys+' regKey='+localStorage.getItem('kl_writereg_'+selectedNetwork+'_'+walletAddr), 'writereg-check');
+      reportError('hasOnlyWriteKeys='+hasOnlyWriteKeys+' regKey='+localStorage.getItem('kl_writereg_'+selectedNetwork+'_'+walletAddr), 'writereg-check');
       // Ryd evt. gammel reg-flag så vi prøver igen
       if (hasOnlyWriteKeys) {
         localStorage.removeItem('kl_writereg_'+selectedNetwork+'_'+walletAddr);
@@ -1255,7 +1243,7 @@ async function detectJournalNFT() {
       try {
         const meta    = await bfGet('assets/'+unit);
         const onchain = meta.onchain_metadata;
-        await reportError('unit='+unit.slice(0,16)+'… onchain='+JSON.stringify(onchain).slice(0,200), 'nft-detect');
+        reportError('unit='+unit.slice(0,16)+'… onchain='+JSON.stringify(onchain).slice(0,200), 'nft-detect');
         if (!onchain) continue;
 
         // Søg efter tokenData i alle mulige nesting-formater:
@@ -1914,15 +1902,15 @@ async function sendWriteKeyRegistration(writePolicyId, masterPolicyId) {
 async function registerWriteKeyDevice() {
   const regKey = 'kl_writereg_'+selectedNetwork+'_'+walletAddr;
   if (localStorage.getItem(regKey)) {
-    await reportError('already registered, skipping | masterPolicy='+allNfts.filter(n=>n.isWriteKey).map(n=>n.masterPolicy).join(','), 'writereg-skip');
+    reportError('already registered, skipping | masterPolicy='+allNfts.filter(n=>n.isWriteKey).map(n=>n.masterPolicy).join(','), 'writereg-skip');
     return;
   }
 
   try {
     const writeNfts = allNfts.filter(n => n.isWriteKey);
-    if (!writeNfts.length) { await reportError('no write NFTs found', 'writereg-empty'); return; }
+    if (!writeNfts.length) { reportError('no write NFTs found', 'writereg-empty'); return; }
     const wn = writeNfts[0];
-    await reportError('writeKey='+wn.policyId.slice(0,16)+'… masterPolicy='+wn.masterPolicy+'…', 'writereg-info');
+    reportError('writeKey='+wn.policyId.slice(0,16)+'… masterPolicy='+wn.masterPolicy+'…', 'writereg-info');
 
     const params = await bfGet('epochs/latest/parameters');
     const tip    = await bfGet('blocks/latest');
@@ -1934,7 +1922,7 @@ async function registerWriteKeyDevice() {
         if (u && !u.hasTokens && u.lovelace >= 2000000n) { utxo = u; break; }
       } catch {}
     }
-    if (!utxo) { await reportError('no utxo found for registration', 'writereg-noutxo'); return; }
+    if (!utxo) { reportError('no utxo found for registration', 'writereg-noutxo'); return; }
 
     const meta = { [WRITE_KEY_LABEL]: {
       writeKey: wn.policyId,
@@ -1943,12 +1931,11 @@ async function registerWriteKeyDevice() {
         ? [walletAddr.slice(0,64), walletAddr.slice(64)]
         : walletAddr
     }};
-    await reportError('sending registration: '+JSON.stringify(meta[WRITE_KEY_LABEL]).slice(0,150), 'writereg-send');
+    reportError('sending registration: '+JSON.stringify(meta[WRITE_KEY_LABEL]).slice(0,150), 'writereg-send');
     await buildAndSubmitMetaTx(utxo, params, tip, meta);
     localStorage.setItem(regKey, '1');
-    await reportError('registration sent OK', 'writereg-ok');
   } catch(e) {
-    await reportError(e.message||'unknown', 'writereg-err');
+    reportError(e.message||'unknown', 'writereg-err');
   }
 }
 
@@ -3237,7 +3224,7 @@ async function loadEntries() {
 
     // Find write key holders — brug localStorage liste + label-1339 som backup
     const masterPolicyIds = allNfts.filter(n => !n.isWriteKey).map(n => n.policyId);
-    await reportError('scanning write keys, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
+    reportError('scanning write keys, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
 
     const writeKeyUnits = new Set();
 
@@ -3254,7 +3241,6 @@ async function loadEntries() {
       for (let page = 1; page <= 5; page++) {
         const items = await bfGet('metadata/txs/labels/'+WRITE_KEY_LABEL+'?order=desc&count=100&page='+page);
         if (!items.length) break;
-        await reportError('1339 items='+items.length, 'loadentries-1339');
         for (const item of items) {
           try {
             const m = item.json_metadata;
@@ -3270,13 +3256,12 @@ async function loadEntries() {
     } catch {}
 
     // 3) For hvert write key unit — find nuværende holder via Blockfrost
-    await reportError('write key units found: '+writeKeyUnits.size, 'loadentries-units');
     for (const unit of writeKeyUnits) {
       try {
         const holders = await bfGet('assets/'+unit+'/addresses');
         for (const h of holders||[]) {
           if (h.address) {
-            await reportError('holder: '+h.address.slice(0,20), 'loadentries-holder');
+            reportError('holder: '+h.address.slice(0,20), 'loadentries-holder');
             searchAddrs.add(h.address);
           }
         }
@@ -3314,7 +3299,7 @@ async function loadEntries() {
 
     const found = [];
     const seenTx = new Set();
-    await reportError('searchAddrs='+[...searchAddrs].map(a=>a.slice(0,16)).join(','), 'loadentries-addrs');
+    reportError('searchAddrs='+[...searchAddrs].map(a=>a.slice(0,16)).join(','), 'loadentries-addrs');
 
     for (const addr of searchAddrs) {
       try {
@@ -3359,7 +3344,6 @@ async function loadEntries() {
 
     // Sorter nyeste først
     found.sort((a, b) => new Date(b.time) - new Date(a.time));
-    await reportError('found='+found.length+' from chain', 'loadentries-result');
 
     // Tilføj lokalt gemte der ikke er på kæden endnu
     const onChain = new Set(found.map(e => e.txHash+'_'+e.noteIndex));
