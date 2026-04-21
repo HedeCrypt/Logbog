@@ -1874,9 +1874,9 @@ async function mintWriteKey(tokenName, displayName) {
   const txHash  = await submitTx(txCbor);
 
   // Send registreringstransaktion (label 1339) — knytter skrive-NFT til hoved-NFT on-chain
-  // Vent lidt så wallet UTxO opdateres
+  // Gem fuld asset unit (policyId + tokenNameHex) så master kan finde nuværende holder
   await sleep(3000);
-  await sendWriteKeyRegistration(policyId, masterNft.policyId);
+  await sendWriteKeyRegistration(policyId + tokenNameHex, masterNft.policyId);
 
   return { policyId, tokenName, writePubKey, txHash };
 }
@@ -3225,36 +3225,34 @@ async function loadEntries() {
       cached.forEach(a => searchAddrs.add(a));
     } catch {}
 
-    // Scan label 1339 for skrive-NFTer registreret til vores hoved-NFT
+    // Scan label 1339 for write keys registreret til vores hoved-NFT
+    // Brug assets/{unit}/addresses til at finde nuværende holder — virker altid
     const masterPolicyIds = allNfts.filter(n => !n.isWriteKey).map(n => n.policyId);
     await reportError('scanning 1339, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
     try {
       for (let page = 1; page <= 5; page++) {
         const items = await bfGet('metadata/txs/labels/'+WRITE_KEY_LABEL+'?order=desc&count=100&page='+page);
         if (!items.length) break;
-        await reportError('1339 page='+page+' items='+items.length+' first='+JSON.stringify(items[0]?.json_metadata).slice(0,100), 'loadentries-1339');
+        await reportError('1339 items='+items.length+' first='+JSON.stringify(items[0]?.json_metadata).slice(0,80), 'loadentries-1339');
         for (const item of items) {
           try {
             const m = item.json_metadata;
             const regs = m?.registrations ? m.registrations : (m?.writeKey ? [m] : []);
             for (const reg of regs) {
-              await reportError('reg.for='+reg?.for+' included='+(!!reg?.for && masterPolicyIds.includes(reg.for)), 'loadentries-reg');
               if (!reg?.for || !masterPolicyIds.includes(reg.for)) continue;
-              if (reg.addr) {
-                // addr kan være en string eller et array af chunks (bech32 > 64 tegn)
-                const addr = Array.isArray(reg.addr) ? reg.addr.join('') : reg.addr;
-                if (typeof addr === 'string' && addr.length > 10) {
-                  await reportError('found addr='+addr.slice(0,20), 'loadentries-found');
-                  searchAddrs.add(addr);
-                }
-              } else {
-                const txUtxos = await bfGet('txs/'+item.tx_hash+'/utxos').catch(()=>null);
-                if (txUtxos?.inputs) {
-                  for (const inp of txUtxos.inputs) {
-                    if (inp.address) { await reportError('fallback addr='+inp.address.slice(0,20), 'loadentries-fallback'); searchAddrs.add(inp.address); }
+              // writeKey er nu fuld asset unit (policyId + tokenNameHex)
+              const unit = reg.writeKey;
+              if (!unit || unit.length < 56) continue;
+              // Find nuværende holder via Blockfrost assets/{unit}/addresses
+              try {
+                const holders = await bfGet('assets/'+unit+'/addresses');
+                for (const h of holders||[]) {
+                  if (h.address) {
+                    await reportError('write key holder: '+h.address.slice(0,20), 'loadentries-holder');
+                    searchAddrs.add(h.address);
                   }
                 }
-              }
+              } catch {}
             }
           } catch { continue; }
         }
