@@ -2689,11 +2689,13 @@ async function sendBatch() {
     const now = new Date().toISOString();
     const isWriteOnlyWallet = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
     drafts.forEach((d,i) => {
-      // Write key wallets gemmer ikke plaintext — kan ikke dekryptere egne noter
-      const entryText = isWriteOnlyWallet ? null : d.text;
-      savedEntries.unshift({ text:entryText, encHex:d.encHex, txHash, noteIndex:i, totalInBatch:drafts.length, time:d.time||now });
+      savedEntries.unshift({ text:d.text, encHex:d.encHex, txHash, noteIndex:i, totalInBatch:drafts.length, time:d.time||now });
     });
     drafts = [];
+    // Write key wallets: fjern plaintext fra de netop sendte noter
+    if (isWriteOnlyWallet) {
+      savedEntries = savedEntries.map(e => e.isDraft ? e : { ...e, text: null });
+    }
     saveLocalStorage();
     updateSidebarDrafts();
     renderCombinedJournal();
@@ -3535,11 +3537,10 @@ function loadLocalStorage() {
     drafts       = d ? JSON.parse(d) : [];
     savedEntries = e ? JSON.parse(e) : [];
 
-    // Write key wallets må ikke have plaintext liggende lokalt
+    // Write key wallets må ikke have plaintext liggende for on-chain noter
     const isWriteOnly = allNfts.length > 0 && allNfts.every(n => n.isWriteKey);
     if (isWriteOnly) {
-      savedEntries = savedEntries.map(e => ({ ...e, text: null }));
-      drafts = []; // Ryd kladder — write key enheder beholder ikke kladder lokalt
+      savedEntries = savedEntries.map(e => e.isDraft ? e : { ...e, text: null });
     }
 
     updateNavEntries();
