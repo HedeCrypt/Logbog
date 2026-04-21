@@ -3209,20 +3209,20 @@ async function submitTx(signedCbor) {
 // ── Hent og vis noter fra kæden ───────────────────────────────────
 async function loadEntries() {
   const container = document.getElementById('entriesList');
-  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:1rem 0"><div class="spinner"></div> Loading from chain…</div>';
+  const dbg = (msg) => {
+    container.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:.5rem 0;opacity:.7">${esc(msg)}</div>`;
+  };
+  dbg('Loading…');
 
   try {
-    // Byg liste af adresser der skal søges på
     const searchAddrs = new Set([walletAddr]);
 
-    // Hent cachede from-adresser fra localStorage
     const cacheKey = 'kl_fromaddrs_'+selectedNetwork+'_'+walletAddr;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
       cached.forEach(a => searchAddrs.add(a));
     } catch {}
 
-    // Find write key holders — brug localStorage liste + label-1339 som backup
     const masterPolicyIds = allNfts.filter(n => !n.isWriteKey).map(n => n.policyId);
     reportError('scanning write keys, masterPolicyIds='+masterPolicyIds.map(p=>p.slice(0,12)).join(','), 'loadentries-scan');
 
@@ -3256,6 +3256,7 @@ async function loadEntries() {
     } catch {}
 
     // 3) For hvert write key unit — find nuværende holder via Blockfrost
+    dbg('Found '+writeKeyUnits.size+' write key(s) in storage. Looking up holders…');
     for (const unit of writeKeyUnits) {
       try {
         const holders = await bfGet('assets/'+unit+'/addresses');
@@ -3267,6 +3268,7 @@ async function loadEntries() {
         }
       } catch {}
     }
+    dbg('Scanning '+searchAddrs.size+' address(es) for notes…');
 
     // Brug Blockfrost metadata-endpoint for label 1338 — langt hurtigere end at scanne alle txs
     try {
@@ -3344,6 +3346,7 @@ async function loadEntries() {
 
     // Sorter nyeste først
     found.sort((a, b) => new Date(b.time) - new Date(a.time));
+    dbg('Found '+found.length+' entries. Decrypted: '+found.filter(e=>e.text).length);
 
     // Tilføj lokalt gemte der ikke er på kæden endnu
     const onChain = new Set(found.map(e => e.txHash+'_'+e.noteIndex));
