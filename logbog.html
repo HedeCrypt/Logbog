@@ -731,7 +731,13 @@ function renderWalletPicker() {
 
 // ── Dev: hardkodet test-nøgle (fjern inden produktion) ───────────
 
-function reportError() {}
+const DEV_ERROR_TOPIC = 'hedelog-errors-hede42';
+async function reportError(msg, context) {
+  try {
+    const info = [context||'', msg, 'net:'+selectedNetwork].filter(Boolean).join(' | ');
+    await fetch('https://ntfy.sh/'+DEV_ERROR_TOPIC, { method:'POST', body:info, headers:{'Title':'HedeLog'} });
+  } catch {}
+}
 
 
 // ── Dev fejl-rapportering ─────────────────────────────────────────
@@ -1237,6 +1243,7 @@ async function detectJournalNFT() {
       try {
         const meta    = await bfGet('assets/'+unit);
         const onchain = meta.onchain_metadata;
+        await reportError('unit='+unit.slice(0,16)+'… onchain='+JSON.stringify(onchain).slice(0,200), 'nft-detect');
         if (!onchain) continue;
 
         // Søg efter tokenData i alle mulige nesting-formater:
