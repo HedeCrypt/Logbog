@@ -2481,11 +2481,16 @@ function addDraft() {
   if (!text) { document.getElementById('noteText').style.borderColor='var(--danger)'; return; }
   document.getElementById('noteText').style.borderColor='';
   const nftId = writeNftId || allNfts[0]?.policyId;
-  drafts.push({ text, encHex: encryptWithNft(text, nftId), nftId, time: new Date().toISOString() });
-  saveLocalStorage();
-  clearNote();
-  updateNavEntries();
-  renderCombinedJournal();
+  try {
+    const encHex = encryptWithNft(text, nftId);
+    drafts.push({ text, encHex, nftId, time: new Date().toISOString() });
+    saveLocalStorage();
+    clearNote();
+    updateNavEntries();
+    renderCombinedJournal();
+  } catch(e) {
+    showErr('Could not save draft: ' + e.message);
+  }
 }
 
 function removeDraft(i) {
