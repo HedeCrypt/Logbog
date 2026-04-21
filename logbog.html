@@ -1929,7 +1929,9 @@ async function registerWriteKeyDevice() {
     const meta = { [WRITE_KEY_LABEL]: {
       writeKey: wn.policyId,
       for:      wn.masterPolicy || '',
-      addr:     walletAddr
+      addr:     walletAddr.length > 64
+        ? [walletAddr.slice(0,64), walletAddr.slice(64)]
+        : walletAddr
     }};
     await reportError('sending registration: '+JSON.stringify(meta[WRITE_KEY_LABEL]).slice(0,150), 'writereg-send');
     await buildAndSubmitMetaTx(utxo, params, tip, meta);
@@ -3238,9 +3240,13 @@ async function loadEntries() {
             for (const reg of regs) {
               await reportError('reg.for='+reg?.for+' included='+(!!reg?.for && masterPolicyIds.includes(reg.for)), 'loadentries-reg');
               if (!reg?.for || !masterPolicyIds.includes(reg.for)) continue;
-              if (reg.addr && typeof reg.addr === 'string') {
-                await reportError('found addr='+reg.addr.slice(0,20), 'loadentries-found');
-                searchAddrs.add(reg.addr);
+              if (reg.addr) {
+                // addr kan være en string eller et array af chunks (bech32 > 64 tegn)
+                const addr = Array.isArray(reg.addr) ? reg.addr.join('') : reg.addr;
+                if (typeof addr === 'string' && addr.length > 10) {
+                  await reportError('found addr='+addr.slice(0,20), 'loadentries-found');
+                  searchAddrs.add(addr);
+                }
               } else {
                 const txUtxos = await bfGet('txs/'+item.tx_hash+'/utxos').catch(()=>null);
                 if (txUtxos?.inputs) {
