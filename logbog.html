@@ -2531,7 +2531,7 @@ function updateSidebarDrafts() {
   sec.style.display='block';
   document.getElementById('sidebarDraftCnt').textContent = drafts.length;
   document.getElementById('sidebarDraftQ').innerHTML = drafts.slice(0,4).map(d=>`
-    <div class="draft-pill"><div class="draft-pill-txt">${esc(d.text.slice(0,38))}</div></div>`).join('');
+    <div class="draft-pill"><div class="draft-pill-txt">${esc((d.text||'').slice(0,38))}</div></div>`).join('');
 }
 
 // ── Send batch ────────────────────────────────────────────────────
@@ -3507,7 +3507,7 @@ function renderNavPage(el, reset, allEntries) {
       : '';
     return `<div class="nav-entry" onclick="jumpToEntry(${idx},${e.isDraft||false})">
       <div class="nav-entry-date">${date}${dot}</div>
-      <div class="nav-entry-preview">${esc(e.text.slice(0,52))}</div>
+      <div class="nav-entry-preview">${esc((e.text||'[ encrypted ]').slice(0,52))}</div>
     </div>`;
   }).join('');
 
