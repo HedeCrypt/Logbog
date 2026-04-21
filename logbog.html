@@ -2538,9 +2538,10 @@ async function sendBatch() {
     setStatus('Pakker '+drafts.length+' noter…','loading');
     await sleep(150);
 
-    const notes = drafts.map(d => {
-      // Krypteret data som rå bytes, splittet i 64-byte chunks
+    const notes = drafts.map((d, idx) => {
+      if (!d.encHex) throw new Error('Draft '+idx+' has no encrypted data. Please remove and re-add it.');
       const raw = h2b(d.encHex);
+      if (!raw.length) throw new Error('Draft '+idx+' encryption is empty.');
       const chunks = [];
       for (let i = 0; i < raw.length; i += 64) chunks.push(raw.slice(i, i + 64));
       return chunks;
