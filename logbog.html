@@ -520,6 +520,17 @@
   </main>
 </div>
 
+<!-- NFT SELECTOR OVERLAY -->
+<div class="settings-overlay" id="nftSelectorOverlay" onclick="if(event.target===this)closeNftSelector()">
+  <div class="settings-panel" id="nftSelectorPanel">
+    <div class="settings-title">
+      <span>Switch journal</span>
+      <button class="settings-close" onclick="closeNftSelector()">×</button>
+    </div>
+    <div id="nftSelectorList"></div>
+  </div>
+</div>
+
 <!-- WRITE KEY OVERLAY -->
 <div class="settings-overlay" id="writeKeyOverlay" onclick="if(event.target===this)closeWriteKeyDialog()">
   <div class="settings-panel" id="writeKeyPanel">
@@ -1417,12 +1428,17 @@ async function doMintWriteKey() {
 
 function updateNftBadge() {
   const badge = document.getElementById('nftBadge');
-  if (!allNfts.length) { badge.style.display='none'; return; }
-  const activeNames = allNfts.filter(n => activeNftIds.has(n.policyId)).map(n => n.tokenName);
-  badge.textContent = '⬡ ' + (activeNames.length === 1 ? activeNames[0] : activeNames.length+' journals');
+  const masterNfts = allNfts.filter(n => !n.isWriteKey);
+  if (!masterNfts.length) { badge.style.display='none'; return; }
+
+  const activeNft = masterNfts.find(n => n.policyId === writeNftId) || masterNfts[0];
+  const writeNfts = allNfts.filter(n => n.isWriteKey);
+  const writeTag  = writeNfts.length ? ` · ${writeNfts.length} write key${writeNfts.length>1?'s':''}` : '';
+
+  badge.textContent = '⬡ ' + activeNft.tokenName + writeTag;
   badge.style.display = 'block';
-  badge.style.cursor = allNfts.length > 1 ? 'pointer' : 'default';
-  badge.onclick = allNfts.length > 1 ? showNftSelector : null;
+  badge.style.cursor = masterNfts.length > 1 ? 'pointer' : 'default';
+  badge.onclick = masterNfts.length > 1 ? showNftSelector : null;
   renderSidebarNftList();
 }
 
@@ -1461,10 +1477,35 @@ function loadNftSelection() {
 }
 
 function showNftSelector() {
-  // Journal keys vises nu direkte i sidebar
-  document.getElementById('journalKeysSec')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  const masterNfts = allNfts.filter(n => !n.isWriteKey);
+  if (masterNfts.length <= 1) return;
+
+  const overlay = document.getElementById('nftSelectorOverlay');
+  const list    = document.getElementById('nftSelectorList');
+
+  list.innerHTML = masterNfts.map(nft => {
+    const isWrite  = nft.policyId === writeNftId;
+    const isActive = activeNftIds.has(nft.policyId);
+    return `<div class="nft-sel-row">
+      <label class="nft-sel-check">
+        <input type="checkbox" ${isActive?'checked':''} onchange="toggleNftActive('${nft.policyId}', this.checked)">
+        <div class="nft-sel-info">
+          <div class="nft-sel-name">${esc(nft.tokenName)}</div>
+          <div class="nft-sel-policy">${nft.policyId.slice(0,24)}…</div>
+        </div>
+      </label>
+      <button class="nft-sel-write-btn ${isWrite?'active':''}" onclick="setWriteNft('${nft.policyId}');closeNftSelector()">
+        ${isWrite ? '✎ writing' : 'write here'}
+      </button>
+    </div>`;
+  }).join('');
+
+  overlay.classList.add('open');
 }
-function closeNftSelector() {}
+
+function closeNftSelector() {
+  document.getElementById('nftSelectorOverlay').classList.remove('open');
+}
 
 function toggleNftActive(policyId, checked) {
   if (checked) activeNftIds.add(policyId);
@@ -2455,12 +2496,22 @@ function addDraft() {
   }
 }
 
-function removeDraft(i) {
-  drafts.splice(i,1);
+function editDraftByTime(time) {
+  const idx = drafts.findIndex(d => d.time === time);
+  if (idx === -1) return;
+  const draft = drafts[idx];
+  // Sæt teksten op i textarea og fjern draft
+  document.getElementById('noteText').value = draft.text || '';
+  updateCharCount();
+  drafts.splice(idx, 1);
   saveLocalStorage();
+  // Scroll til toppen så textarea er synlig
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('noteText').focus();
   updateNavEntries();
   renderCombinedJournal();
 }
+
 
 function toggleDraftEnc(i) {
   document.getElementById('draftEnc'+i).classList.toggle('show');
@@ -2470,10 +2521,13 @@ function toggleDraftEnc(i) {
 function updateWriteNftIndicator() {
   const indicator = document.getElementById('writeNftIndicator');
   if (!indicator) return;
-  if (allNfts.length > 1 && writeNftId) {
-    const nft = allNfts.find(n => n.policyId === writeNftId);
-    indicator.textContent = '⬡ '+esc(nft?.tokenName||'') + ' ▾';
+  const masterNfts = allNfts.filter(n => !n.isWriteKey);
+  if (masterNfts.length > 1 && writeNftId) {
+    const nft = masterNfts.find(n => n.policyId === writeNftId);
+    indicator.textContent = '⬡ '+(nft?.tokenName||'') + ' ▾';
     indicator.style.display = 'inline';
+    indicator.style.opacity = '1';
+    indicator.title = 'Tap to switch journal';
   } else {
     indicator.style.display = 'none';
   }
@@ -3372,7 +3426,11 @@ function renderEntries(entries) {
       ? `<span class="unsent-badge">device only</span>`
       : '';
     const actions = e.isDraft
-      ? `<button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')"
+      ? `<button class="toggle-btn" onclick="event.stopPropagation();editDraftByTime('${e.time}')"
+           style="padding:4px 8px;border-radius:4px;font-size:9px">
+           ✎ edit
+         </button>
+         <button class="toggle-btn" onclick="event.stopPropagation();removeDraftByTime('${e.time}')"
            style="color:var(--danger);opacity:.7;padding:4px 8px;border:1px solid rgba(192,84,58,.2);border-radius:4px;font-size:9px">
            ✕ remove
          </button>`
