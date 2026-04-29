@@ -1440,6 +1440,7 @@ function updateNftBadge() {
   badge.style.cursor = masterNfts.length > 1 ? 'pointer' : 'default';
   badge.onclick = masterNfts.length > 1 ? showNftSelector : null;
   renderSidebarNftList();
+  updateWriteNftIndicator();
 }
 
 function renderSidebarNftList() {
@@ -2522,12 +2523,14 @@ function updateWriteNftIndicator() {
   const indicator = document.getElementById('writeNftIndicator');
   if (!indicator) return;
   const masterNfts = allNfts.filter(n => !n.isWriteKey);
-  if (masterNfts.length > 1 && writeNftId) {
-    const nft = masterNfts.find(n => n.policyId === writeNftId);
-    indicator.textContent = '⬡ '+(nft?.tokenName||'') + ' ▾';
+  if (masterNfts.length >= 1 && writeNftId) {
+    const nft = masterNfts.find(n => n.policyId === writeNftId) || masterNfts[0];
+    indicator.textContent = '⬡ '+(nft?.tokenName||'');
+    if (masterNfts.length > 1) indicator.textContent += ' ▾';
     indicator.style.display = 'inline';
-    indicator.style.opacity = '1';
-    indicator.title = 'Tap to switch journal';
+    indicator.style.opacity = masterNfts.length > 1 ? '1' : '0.5';
+    indicator.style.cursor  = masterNfts.length > 1 ? 'pointer' : 'default';
+    indicator.onclick = masterNfts.length > 1 ? showNftSelector : null;
   } else {
     indicator.style.display = 'none';
   }
