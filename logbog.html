@@ -405,8 +405,7 @@
         </div>
         <div class="write-toolbar">
           <button class="primary" onclick="addDraft()">Save on device</button>
-          <button class="ghost" onclick="clearNote()">Clear</button>
-          <span id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;opacity:.6" onclick="showNftSelector()"></span>
+          <button class="ghost" id="writeNftIndicator" style="font-family:var(--mono);font-size:10px;display:none" onclick="showNftSelector()"></button>
           <span class="char-count" id="charCount">0 chars</span>
         </div>
         <div class="status-line" id="statusLine"></div>
